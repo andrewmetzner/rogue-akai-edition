@@ -106,14 +106,14 @@ menu → classSelect → playing ↔ paused
 
 ## Save / Load (Roguelike Permadeath)
 
-14 total floors across 4 biomes (defined in `src/biomes.ts`):
+28 total floors across 4 biomes, 7 floors each (defined in `src/biomes.ts`):
 
 | Biome          | Floors | Hazard tile    | Glyph | Effect              |
 |----------------|--------|----------------|-------|---------------------|
 | Dungeon        | 1–7    | none           | —     | —                   |
-| Frozen Caverns | 8–10   | IceFloor (3)   | `°`   | Player slides       |
-| Slime Pits     | 11–12  | SlimePool (4)  | `%`   | –1 HP/turn          |
-| The Inferno    | 13–14  | LavaFloor (5)  | `~`   | –3 HP/turn          |
+| Frozen Caverns | 8–14   | IceFloor (3)   | `°`   | Player slides       |
+| Slime Pits     | 15–21  | SlimePool (4)  | `%`   | –1 HP/turn          |
+| The Inferno    | 22–28  | LavaFloor (5)  | `~`   | –3 HP/turn          |
 
 Each biome defines its own tile color palette (overrides theme for tile rendering).
 Theme still controls player color, HUD, and menu.

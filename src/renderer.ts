@@ -250,8 +250,6 @@ export class Renderer {
     ctx.fillText('@ you   monsters: r g o T D Y I S Z F   items: ! / ) [', cx, y);
     y += 14;
     ctx.fillText('hazards: \u00b0 ice (slide)   % slime (-1HP/turn)   ~ lava (-3HP/turn)', cx, y);
-    y += 14;
-    ctx.fillText('14 floors across 4 biomes: Dungeon → Ice → Slime → Fire', cx, y);
 
     // Theme selector
     y += 22;
