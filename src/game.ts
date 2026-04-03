@@ -12,7 +12,7 @@ import { saveGame, deleteSave, loadSaveMeta, loadGame, type SaveMeta } from './s
 const MAP_W = 80;
 const MAP_H = 45;
 const FOV_RADIUS = 9;
-const MAX_DEPTH = 14;
+const MAX_DEPTH = 28;
 const MAX_LOG = 6;
 const SAVE_INTERVAL = 10; // auto-save every N turns
 

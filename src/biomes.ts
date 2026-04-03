@@ -59,7 +59,7 @@ export const BIOMES: Biome[] = [
     name: 'Frozen Caverns',
     flavorText: 'The cold bites. The floor shifts beneath your feet.',
     depthStart: 8,
-    depthEnd: 10,
+    depthEnd: 14,
     hazardChance: 0.22,  // 22% of floor cells become ice
     palette: {
       wallVis:     '#88ccee',
@@ -79,8 +79,8 @@ export const BIOMES: Biome[] = [
     id: BiomeId.Slime,
     name: 'The Slime Pits',
     flavorText: 'Everything drips. The ground pulls at your boots.',
-    depthStart: 11,
-    depthEnd: 12,
+    depthStart: 15,
+    depthEnd: 21,
     hazardChance: 0.25,
     palette: {
       wallVis:     '#4a7a3a',
@@ -100,8 +100,8 @@ export const BIOMES: Biome[] = [
     id: BiomeId.Fire,
     name: 'The Inferno',
     flavorText: 'Heat warps the air. Lava flows where floors once were.',
-    depthStart: 13,
-    depthEnd: 14,
+    depthStart: 22,
+    depthEnd: 28,
     hazardChance: 0.28,
     palette: {
       wallVis:     '#993322',

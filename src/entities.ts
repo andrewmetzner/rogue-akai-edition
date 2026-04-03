@@ -39,24 +39,24 @@ const MONSTERS: MonsterTemplate[] = [
   { glyph: 'T', color: '#4aa',    name: 'Troll',        hp: 22, attack: 8,  defense: 3, minDepth: 3, maxDepth: 10 },
   { glyph: 'D', color: '#f60',    name: 'Dragon',       hp: 40, attack: 12, defense: 5, minDepth: 5, maxDepth: 12 },
 
-  // ── Frozen Caverns (8–10) ─────────────────────────────────────────────
-  { glyph: 'w', color: '#aaddff', name: 'Frost Wolf',   hp: 18, attack: 8,  defense: 2, minDepth: 8,  maxDepth: 11 },
-  { glyph: 'Y', color: '#ddeeff', name: 'Yeti',         hp: 30, attack: 10, defense: 4, minDepth: 8,  maxDepth: 11 },
-  { glyph: 'E', color: '#88ccff', name: 'Ice Elemental',hp: 22, attack: 9,  defense: 3, minDepth: 9,  maxDepth: 11 },
+  // ── Frozen Caverns (8–14) ─────────────────────────────────────────────
+  { glyph: 'w', color: '#aaddff', name: 'Frost Wolf',   hp: 18, attack: 8,  defense: 2, minDepth: 8,  maxDepth: 14 },
+  { glyph: 'Y', color: '#ddeeff', name: 'Yeti',         hp: 30, attack: 10, defense: 4, minDepth: 8,  maxDepth: 14 },
+  { glyph: 'E', color: '#88ccff', name: 'Ice Elemental',hp: 22, attack: 9,  defense: 3, minDepth: 10, maxDepth: 14 },
   // Ice Dragon: freezes player on attack (turns blue, loses 1 turn)
-  { glyph: 'I', color: '#00eeff', name: 'Ice Dragon',   hp: 50, attack: 13, defense: 5, minDepth: 9,  maxDepth: 11, special: 'freeze' },
+  { glyph: 'I', color: '#00eeff', name: 'Ice Dragon',   hp: 50, attack: 13, defense: 5, minDepth: 12, maxDepth: 14, special: 'freeze' },
 
-  // ── Slime Pits (11–12) ────────────────────────────────────────────────
-  { glyph: 's', color: '#66cc33', name: 'Slime',        hp: 14, attack: 5,  defense: 0, minDepth: 10, maxDepth: 13 },
-  { glyph: 'j', color: '#88ff44', name: 'Jelly',        hp: 10, attack: 6,  defense: 1, minDepth: 10, maxDepth: 13 },
-  { glyph: 'S', color: '#44ff00', name: 'Slime Lord',   hp: 38, attack: 11, defense: 3, minDepth: 11, maxDepth: 13 },
+  // ── Slime Pits (15–21) ────────────────────────────────────────────────
+  { glyph: 's', color: '#66cc33', name: 'Slime',        hp: 14, attack: 5,  defense: 0, minDepth: 15, maxDepth: 21 },
+  { glyph: 'j', color: '#88ff44', name: 'Jelly',        hp: 10, attack: 6,  defense: 1, minDepth: 15, maxDepth: 21 },
+  { glyph: 'S', color: '#44ff00', name: 'Slime Lord',   hp: 38, attack: 11, defense: 3, minDepth: 17, maxDepth: 21 },
 
-  // ── The Inferno (13–14) ───────────────────────────────────────────────
-  { glyph: 'e', color: '#ff8833', name: 'Ember Spirit', hp: 20, attack: 10, defense: 2, minDepth: 12, maxDepth: 15 },
-  { glyph: 'd', color: '#ff5500', name: 'Drake',        hp: 28, attack: 12, defense: 3, minDepth: 13, maxDepth: 15 },
-  { glyph: 'F', color: '#ff2200', name: 'Fire Demon',   hp: 45, attack: 15, defense: 6, minDepth: 13, maxDepth: 15 },
+  // ── The Inferno (22–28) ───────────────────────────────────────────────
+  { glyph: 'e', color: '#ff8833', name: 'Ember Spirit', hp: 20, attack: 10, defense: 2, minDepth: 22, maxDepth: 28 },
+  { glyph: 'd', color: '#ff5500', name: 'Drake',        hp: 28, attack: 12, defense: 3, minDepth: 23, maxDepth: 28 },
+  { glyph: 'F', color: '#ff2200', name: 'Fire Demon',   hp: 45, attack: 15, defense: 6, minDepth: 24, maxDepth: 28 },
   // Fire Dragon: breathes a line of fire, scorching 3 tiles toward the player
-  { glyph: 'Z', color: '#ff6600', name: 'Fire Dragon',  hp: 55, attack: 14, defense: 6, minDepth: 13, maxDepth: 15, special: 'fireline' },
+  { glyph: 'Z', color: '#ff6600', name: 'Fire Dragon',  hp: 55, attack: 14, defense: 6, minDepth: 25, maxDepth: 28, special: 'fireline' },
 ];
 
 const ITEMS: { glyph: string; color: string; name: string; kind: ItemKind; minDepth: number }[] = [
