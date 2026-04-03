@@ -2,9 +2,10 @@ import { type GameState, type Entity, EntityType, Tile } from './types';
 import { generateDungeon } from './dungeon';
 import { createPlayer, spawnEntities } from './entities';
 import { computeFOV } from './fov';
-import { attackEntity, useItem, monsterAI } from './combat';
+import { attackEntity, useItem, monsterAI, playerLevel } from './combat';
 import { Renderer } from './renderer';
 import { THEMES } from './themes';
+import { audio } from './audio';
 
 const MAP_W = 80;
 const MAP_H = 45;
@@ -45,6 +46,7 @@ export class Game {
     this.atMenu = false;
     cancelAnimationFrame(this.menuAnimId);
     this.renderer.applyBodyBg();
+    audio.start();
     this.newGame();
   }
 
@@ -80,9 +82,11 @@ export class Game {
     if (depth > MAX_DEPTH) {
       this.won = true;
       this.over = true;
+      audio.victory();
       this.renderer.renderGameOver(true);
       return;
     }
+    audio.stairs();
     const dungeon = generateDungeon(MAP_W, MAP_H, depth);
     const player = this.state.player;
     player.x = dungeon.startX;
@@ -164,20 +168,31 @@ export class Game {
 
     const target = this.entityAt(nx, ny);
     if (target?.type === EntityType.Monster) {
+      const prevLevel = playerLevel(player.stats!.xp);
+      audio.attack();
       const msg = attackEntity(player, target);
       this.addLog(msg);
       if (!target.alive) {
+        audio.kill();
         const idx = entities.indexOf(target);
         if (idx !== -1) entities.splice(idx, 1);
+      }
+      if (playerLevel(player.stats!.xp) > prevLevel) {
+        audio.levelUp();
+        this.addLog('You feel stronger! (Level up)');
       }
       this.endTurn();
       return;
     }
 
-    if (!this.canWalk(nx, ny)) return;
+    if (!this.canWalk(nx, ny)) {
+      audio.bump();
+      return;
+    }
 
     player.x = nx;
     player.y = ny;
+    audio.step();
 
     if (this.tileAt(nx, ny) === Tile.StairsDown) {
       this.addLog('You see stairs leading down. Press > to descend.');
@@ -194,6 +209,7 @@ export class Game {
     );
     if (!item) { this.addLog('Nothing to pick up here.'); return; }
 
+    audio.pickup();
     const msg = useItem(player, item.itemKind!, entities);
     item.alive = false;
     this.addLog(`You pick up the ${item.name}. ${msg}`);
@@ -219,6 +235,7 @@ export class Game {
     if (!this.state.player.alive) {
       this.over = true;
       this.won = false;
+      audio.death();
       this.addLog('You have died... Press R to restart.');
       this.renderer.renderGameOver(false);
     }
@@ -228,6 +245,8 @@ export class Game {
 
   private runMonsters(): void {
     const { entities, player, visible, mapWidth } = this.state;
+    let playerHurt = false;
+
     for (const e of entities) {
       if (e.type !== EntityType.Monster || !e.alive) continue;
 
@@ -239,6 +258,7 @@ export class Game {
 
       if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && (dx !== 0 || dy !== 0)) {
         this.addLog(attackEntity(e, player));
+        playerHurt = true;
         continue;
       }
 
@@ -255,6 +275,9 @@ export class Game {
         if (canMove(nx, ny)) { e.x = nx; e.y = ny; }
       }
     }
+
+    // Play one hurt sound even if multiple monsters attack
+    if (playerHurt) audio.hurt();
   }
 
   // ── Input ─────────────────────────────────────────────────────────────────
