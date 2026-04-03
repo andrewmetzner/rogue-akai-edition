@@ -76,6 +76,49 @@ These are NOT part of the repo. Only current-project/ is tracked.
 ```
 
 
+## Biome System
+
+14 total floors across 4 biomes (defined in `src/biomes.ts`):
+
+| Biome          | Floors | Hazard tile    | Glyph | Effect              |
+|----------------|--------|----------------|-------|---------------------|
+| Dungeon        | 1–7    | none           | —     | —                   |
+| Frozen Caverns | 8–10   | IceFloor (3)   | `°`   | Player slides       |
+| Slime Pits     | 11–12  | SlimePool (4)  | `%`   | –1 HP/turn          |
+| The Inferno    | 13–14  | LavaFloor (5)  | `~`   | –3 HP/turn          |
+
+Each biome defines its own tile color palette (overrides theme for tile rendering).
+Theme still controls player color, HUD, and menu.
+
+Biome tile colors: `biome.palette.*` — used by `renderer.ts` in the tile draw loop.
+Biome monsters: filtered in `entities.ts` by `minDepth` and `maxDepth`.
+
+### Special monsters
+- `I` Ice Dragon (`special: 'freeze'`): on adjacent attack, deals damage AND freezes
+  player for 2 turns. Frozen player: glyph turns blue, can't move (loses their turn).
+  `state.frozenTurns` counts down each turn.
+- `Z` Fire Dragon (`special: 'fireline'`): on adjacent attack, converts up to 3 floor
+  tiles in a line from dragon→player into LavaFloor. Deals bonus fire damage.
+
+Special attack dispatch is in `game.ts` → `runMonsters()`.
+
+
+## Save / Load (Roguelike Permadeath)
+
+- **Save file**: `localStorage['rogue-akai-edition-save']`, version 2.
+- **Auto-save**: every 10 turns (`SAVE_INTERVAL`) and on each stair descent.
+- **Permadeath**: `deleteSave()` is called on death. Dead runs cannot be reloaded.
+- **Start menu**: detects save → shows "Continue / New Game" with ↑↓ selection.
+  Choosing "New Game" when a save exists calls `deleteSave()` first.
+- **Uint8Array serialization**: `map` and `explored` stored as `number[]` via
+  `Array.from()`, restored with `new Uint8Array(arr)`. `visible` is NOT saved
+  (recomputed from FOV on load).
+- **Save schema version**: bump `SAVE_VERSION` in `save.ts` if GameState shape changes.
+  Mismatched version auto-deletes stale save.
+
+Key files: `src/save.ts` (all save logic), `game.ts` `writeSave()` / `loadSavedGame()`.
+
+
 ## Bugs & Fixes
 
 ### [FIXED] Health potion appeared to not heal

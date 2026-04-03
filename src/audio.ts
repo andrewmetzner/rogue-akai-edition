@@ -164,6 +164,46 @@ class AudioEngine {
     this.tone(440, 440, 'square', 0.07, 0.14);
     this.tone(660, 660, 'square', 0.10, 0.14, 0.07);
   }
+
+  // ── Biome hazard sounds ─────────────────────────────────────────────────
+
+  /** Sizzle on lava tile. */
+  lava(): void {
+    this.noise(0.18, 0.18, 800, 'bandpass');
+    this.tone(120, 60, 'sawtooth', 0.15, 0.12);
+  }
+
+  /** Squelch on slime tile. */
+  slime(): void {
+    this.tone(90, 130, 'sine', 0.10, 0.14);
+    this.noise(0.08, 0.10, 300, 'lowpass');
+  }
+
+  /** Ice crack / slide. */
+  ice(): void {
+    this.tone(1200, 600, 'triangle', 0.10, 0.10);
+    this.noise(0.06, 0.06, 2000, 'highpass');
+  }
+
+  /** Ice Dragon freeze effect — crystalline high chime. */
+  freeze(): void {
+    this.tone(1400, 1800, 'triangle', 0.25, 0.12);
+    this.tone(1800, 1400, 'triangle', 0.25, 0.10, 0.12);
+    this.noise(0.12, 0.06, 3000, 'highpass');
+  }
+
+  /** Fire Dragon breathes — deep roar + crackling. */
+  fireBreath(): void {
+    this.noise(0.40, 0.25, 600, 'bandpass');
+    this.tone(80, 50, 'sawtooth', 0.35, 0.20);
+    this.tone(160, 80, 'sawtooth', 0.25, 0.15, 0.05);
+  }
+
+  /** Save written to disk. */
+  save(): void {
+    this.tone(660, 880, 'triangle', 0.08, 0.10);
+    this.tone(880, 660, 'triangle', 0.08, 0.08, 0.07);
+  }
 }
 
 export const audio = new AudioEngine();

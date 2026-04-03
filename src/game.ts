@@ -5,13 +5,16 @@ import { computeFOV } from './fov';
 import { attackEntity, useItem, monsterAI, playerLevel } from './combat';
 import { Renderer } from './renderer';
 import { THEMES } from './themes';
+import { getBiome } from './biomes';
 import { audio } from './audio';
+import { saveGame, deleteSave, loadSaveMeta, loadGame, type SaveMeta } from './save';
 
 const MAP_W = 80;
 const MAP_H = 45;
 const FOV_RADIUS = 9;
-const MAX_DEPTH = 7;
+const MAX_DEPTH = 14;
 const MAX_LOG = 6;
+const SAVE_INTERVAL = 10; // auto-save every N turns
 
 export class Game {
   private state!: GameState;
@@ -20,6 +23,8 @@ export class Game {
   private won = false;
   private atMenu = true;
   private menuAnimId = 0;
+  private menuSelection = 0; // 0=Continue 1=New Game (when save exists)
+  private saveMeta: SaveMeta | null = null;
 
   constructor() {
     this.renderer = new Renderer('canvas');
@@ -31,44 +36,57 @@ export class Game {
 
   private showMenu(): void {
     this.atMenu = true;
+    this.saveMeta = loadSaveMeta();
+    this.menuSelection = 0; // default: Continue (if save exists) or New Game
     document.getElementById('hud-left')!.textContent = '';
     document.getElementById('hud-right')!.textContent = '';
     document.getElementById('log')!.innerHTML = '';
     const loop = () => {
       if (!this.atMenu) return;
-      this.renderer.renderStartMenu();
+      this.renderer.renderStartMenu(this.saveMeta, this.menuSelection);
       this.menuAnimId = requestAnimationFrame(loop);
     };
     this.menuAnimId = requestAnimationFrame(loop);
   }
 
-  private startGame(): void {
+  private startFromMenu(): void {
     this.atMenu = false;
     cancelAnimationFrame(this.menuAnimId);
-    this.renderer.applyBodyBg();
+
+    const biome = getBiome(1);
+    this.renderer.applyBodyBg(biome.palette.bg);
     audio.start();
-    this.newGame();
+
+    if (this.saveMeta && this.menuSelection === 0) {
+      this.loadSavedGame();
+    } else {
+      deleteSave();
+      this.newGame();
+    }
   }
 
   // ── Game lifecycle ────────────────────────────────────────────────────────
 
   private newGame(): void {
     const depth = 1;
-    const dungeon = generateDungeon(MAP_W, MAP_H, depth);
+    const biome = getBiome(depth);
+    const dungeon = generateDungeon(MAP_W, MAP_H, biome);
     const player = createPlayer(dungeon.startX, dungeon.startY);
-    const monsters = spawnEntities(dungeon.rooms, dungeon.map, dungeon.width, depth, player.x, player.y);
+    const entities = spawnEntities(dungeon.rooms, dungeon.map, dungeon.width, depth, player.x, player.y);
 
     this.state = {
-      map: dungeon.map,
+      map:      dungeon.map,
       mapWidth: dungeon.width,
       mapHeight: dungeon.height,
-      visible: new Uint8Array(dungeon.width * dungeon.height),
+      visible:  new Uint8Array(dungeon.width * dungeon.height),
       explored: new Uint8Array(dungeon.width * dungeon.height),
-      entities: monsters,
+      entities,
       player,
       depth,
+      biomeId: biome.id,
       turn: 0,
-      log: ['Welcome! Move to explore. G=get item, >=descend stairs.'],
+      frozenTurns: 0,
+      log: ['Welcome! Move to explore. G=pick up item, >=descend stairs.'],
     };
     this.over = false;
     this.won = false;
@@ -77,35 +95,71 @@ export class Game {
     this.renderLog();
   }
 
+  private loadSavedGame(): void {
+    const loaded = loadGame();
+    if (!loaded) { this.newGame(); return; }
+
+    const biome = getBiome(loaded.state.depth);
+    this.state = {
+      ...loaded.state,
+      visible: new Uint8Array(loaded.state.mapWidth * loaded.state.mapHeight),
+      frozenTurns: 0,
+      biomeId: loaded.biomeId,
+    };
+    this.renderer.themeIndex = loaded.themeIndex;
+    this.renderer.applyBodyBg(biome.palette.bg);
+    this.over = false;
+    this.won = false;
+    this.updateFOV();
+    this.render();
+    this.renderLog();
+    this.addLog(`Welcome back. Depth ${this.state.depth} — ${biome.name}.`);
+  }
+
   private descend(): void {
     const depth = this.state.depth + 1;
     if (depth > MAX_DEPTH) {
       this.won = true;
       this.over = true;
+      deleteSave();
       audio.victory();
-      this.renderer.renderGameOver(true);
+      this.renderer.renderGameOver(true, this.state);
       return;
     }
+
     audio.stairs();
-    const dungeon = generateDungeon(MAP_W, MAP_H, depth);
+    const biome = getBiome(depth);
+    const dungeon = generateDungeon(MAP_W, MAP_H, biome);
     const player = this.state.player;
     player.x = dungeon.startX;
     player.y = dungeon.startY;
-    const monsters = spawnEntities(dungeon.rooms, dungeon.map, dungeon.width, depth, player.x, player.y);
+    const entities = spawnEntities(dungeon.rooms, dungeon.map, dungeon.width, depth, player.x, player.y);
 
     this.state = {
       ...this.state,
-      map: dungeon.map,
+      map:      dungeon.map,
       mapWidth: dungeon.width,
       mapHeight: dungeon.height,
-      visible: new Uint8Array(dungeon.width * dungeon.height),
+      visible:  new Uint8Array(dungeon.width * dungeon.height),
       explored: new Uint8Array(dungeon.width * dungeon.height),
-      entities: monsters,
+      entities,
       depth,
+      biomeId: biome.id,
+      frozenTurns: 0,
     };
-    this.addLog(`You descend to depth ${depth}.`);
+
+    this.addLog(`Depth ${depth}: ${biome.name}. ${biome.flavorText}`);
     this.updateFOV();
+    this.renderer.applyBodyBg(biome.palette.bg);
+    this.writeSave();
     this.render();
+  }
+
+  // ── Save / Load ───────────────────────────────────────────────────────────
+
+  private writeSave(): void {
+    saveGame(this.state, this.state.biomeId, this.renderer.themeIndex);
+    audio.save();
   }
 
   // ── Core systems ──────────────────────────────────────────────────────────
@@ -136,7 +190,7 @@ export class Game {
 
   private render(): void {
     if (this.over) {
-      this.renderer.renderGameOver(this.won);
+      this.renderer.renderGameOver(this.won, this.state);
     } else {
       this.renderer.render(this.state);
     }
@@ -155,13 +209,79 @@ export class Game {
   }
 
   private canWalk(x: number, y: number): boolean {
-    return this.tileAt(x, y) !== Tile.Wall;
+    const t = this.tileAt(x, y);
+    return t !== Tile.Wall;
+  }
+
+  // ── Biome hazards ─────────────────────────────────────────────────────────
+
+  private applyHazardDamage(): void {
+    const tile = this.tileAt(this.state.player.x, this.state.player.y);
+    const s = this.state.player.stats!;
+    if (tile === Tile.LavaFloor) {
+      const dmg = 3;
+      s.hp -= dmg;
+      audio.lava();
+      this.addLog(`The lava sears your flesh! (-${dmg} HP)`);
+    } else if (tile === Tile.SlimePool) {
+      const dmg = 1;
+      s.hp -= dmg;
+      audio.slime();
+      this.addLog(`The slime burns! (-${dmg} HP)`);
+    }
+  }
+
+  /** Try to slide on ice: keep moving in direction until non-ice or wall. */
+  private applyIceSlide(dx: number, dy: number): boolean {
+    const { player } = this.state;
+    if (this.tileAt(player.x, player.y) !== Tile.IceFloor) return false;
+
+    let slid = false;
+    for (let step = 0; step < 10; step++) {
+      const nx = player.x + dx;
+      const ny = player.y + dy;
+      const nextTile = this.tileAt(nx, ny);
+      if (nextTile === Tile.Wall) break;
+      const blocker = this.entityAt(nx, ny);
+      if (blocker?.type === EntityType.Monster) {
+        // Slam into monster while sliding
+        const prevLevel = playerLevel(player.stats!.xp);
+        audio.attack();
+        this.addLog(attackEntity(player, blocker));
+        if (!blocker.alive) {
+          audio.kill();
+          const idx = this.state.entities.indexOf(blocker);
+          if (idx !== -1) this.state.entities.splice(idx, 1);
+        }
+        if (playerLevel(player.stats!.xp) > prevLevel) {
+          audio.levelUp();
+          this.addLog('You feel stronger! (Level up)');
+        }
+        break;
+      }
+      player.x = nx;
+      player.y = ny;
+      slid = true;
+      if (nextTile !== Tile.IceFloor) break;
+    }
+    if (slid) {
+      audio.ice();
+      this.addLog('You slide across the ice!');
+    }
+    return slid;
   }
 
   // ── Player actions ────────────────────────────────────────────────────────
 
   private tryMove(dx: number, dy: number): void {
     if (this.over) return;
+    if (this.state.frozenTurns > 0) {
+      this.state.frozenTurns--;
+      this.addLog(`You are frozen! (${this.state.frozenTurns} turns remaining)`);
+      this.endTurn();
+      return;
+    }
+
     const { player, entities } = this.state;
     const nx = player.x + dx;
     const ny = player.y + dy;
@@ -170,8 +290,7 @@ export class Game {
     if (target?.type === EntityType.Monster) {
       const prevLevel = playerLevel(player.stats!.xp);
       audio.attack();
-      const msg = attackEntity(player, target);
-      this.addLog(msg);
+      this.addLog(attackEntity(player, target));
       if (!target.alive) {
         audio.kill();
         const idx = entities.indexOf(target);
@@ -194,7 +313,10 @@ export class Game {
     player.y = ny;
     audio.step();
 
-    if (this.tileAt(nx, ny) === Tile.StairsDown) {
+    // Ice sliding (recursive until non-ice)
+    this.applyIceSlide(dx, dy);
+
+    if (this.tileAt(player.x, player.y) === Tile.StairsDown) {
       this.addLog('You see stairs leading down. Press > to descend.');
     }
 
@@ -228,24 +350,40 @@ export class Game {
   private endTurn(): void {
     if (this.over) return;
     this.state.turn++;
+
+    // Hazard damage before monsters act
+    this.applyHazardDamage();
+    if (this.checkDeath()) return;
+
     this.runMonsters();
+    if (this.checkDeath()) return;
+
+    // Auto-save periodically
+    if (this.state.turn % SAVE_INTERVAL === 0) this.writeSave();
+
     this.updateFOV();
     this.render();
+  }
 
-    if (!this.state.player.alive) {
-      this.over = true;
-      this.won = false;
-      audio.death();
-      this.addLog('You have died... Press R to restart.');
-      this.renderer.renderGameOver(false);
-    }
+  private checkDeath(): boolean {
+    if (this.state.player.alive && this.state.player.stats!.hp > 0) return false;
+    this.state.player.alive = false;
+    this.over = true;
+    this.won = false;
+    deleteSave(); // permadeath — save is gone
+    audio.death();
+    this.addLog('You have died... Press R to restart.');
+    this.updateFOV();
+    this.renderer.renderGameOver(false, this.state);
+    return true;
   }
 
   // ── Monster AI ────────────────────────────────────────────────────────────
 
   private runMonsters(): void {
-    const { entities, player, visible, mapWidth } = this.state;
+    const { entities, player, visible, mapWidth, map, mapWidth: mw } = this.state;
     let playerHurt = false;
+    let frozePlayer = false;
 
     for (const e of entities) {
       if (e.type !== EntityType.Monster || !e.alive) continue;
@@ -255,8 +393,40 @@ export class Game {
 
       const dx = player.x - e.x;
       const dy = player.y - e.y;
+      const adjacent = Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && (dx !== 0 || dy !== 0);
 
-      if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && (dx !== 0 || dy !== 0)) {
+      if (adjacent) {
+        // Special attacks
+        if (e.special === 'freeze') {
+          this.addLog(attackEntity(e, player));
+          this.state.frozenTurns = 2;
+          frozePlayer = true;
+          playerHurt = true;
+          continue;
+        }
+        if (e.special === 'fireline') {
+          // Breathe fire in a 3-tile line from dragon toward player
+          const stepX = Math.sign(dx);
+          const stepY = Math.sign(dy);
+          let fx = e.x, fy = e.y;
+          let torched = 0;
+          for (let i = 0; i < 4 && torched < 3; i++) {
+            fx += stepX; fy += stepY;
+            if (fx < 0 || fy < 0 || fx >= mw || fy >= this.state.mapHeight) break;
+            const t = map[fy * mw + fx];
+            if (t === Tile.Floor || t === Tile.IceFloor || t === Tile.SlimePool) {
+              map[fy * mw + fx] = Tile.LavaFloor;
+              torched++;
+            }
+          }
+          const dmg = Math.floor(Math.random() * 8) + 10;
+          player.stats!.hp -= dmg;
+          this.addLog(`The Fire Dragon breathes fire! (${torched} tiles scorched, -${dmg} HP)`);
+          audio.fireBreath();
+          playerHurt = true;
+          continue;
+        }
+        // Normal attack
         this.addLog(attackEntity(e, player));
         playerHurt = true;
         continue;
@@ -276,8 +446,8 @@ export class Game {
       }
     }
 
-    // Play one hurt sound even if multiple monsters attack
-    if (playerHurt) audio.hurt();
+    if (frozePlayer) audio.freeze();
+    else if (playerHurt) audio.hurt();
   }
 
   // ── Input ─────────────────────────────────────────────────────────────────
@@ -287,13 +457,15 @@ export class Game {
       // Menu
       if (this.atMenu) {
         if (e.key === 'Enter' || e.key === ' ') {
-          this.startGame();
+          this.startFromMenu();
         } else if (e.key === 'ArrowLeft') {
           this.renderer.themeIndex = (this.renderer.themeIndex - 1 + THEMES.length) % THEMES.length;
           this.renderer.applyBodyBg();
         } else if (e.key === 'ArrowRight') {
           this.renderer.themeIndex = (this.renderer.themeIndex + 1) % THEMES.length;
           this.renderer.applyBodyBg();
+        } else if (this.saveMeta && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+          this.menuSelection = this.menuSelection === 0 ? 1 : 0;
         }
         e.preventDefault();
         return;

@@ -1,4 +1,5 @@
 import { Tile, type Rect } from './types';
+import { type Biome } from './biomes';
 
 export interface DungeonResult {
   map: Uint8Array;
@@ -41,7 +42,6 @@ function carveTunnel(
   x2: number, y2: number
 ): void {
   let x = x1, y = y1;
-  // randomly go horizontal first or vertical first
   if (Math.random() < 0.5) {
     while (x !== x2) { map[y * width + x] = Tile.Floor; x += x < x2 ? 1 : -1; }
     while (y !== y2) { map[y * width + x] = Tile.Floor; y += y < y2 ? 1 : -1; }
@@ -52,10 +52,36 @@ function carveTunnel(
   map[y * width + x] = Tile.Floor;
 }
 
-export function generateDungeon(width: number, height: number, depth: number): DungeonResult {
-  const map = new Uint8Array(width * height); // all walls
+function scatterHazards(
+  map: Uint8Array,
+  width: number,
+  height: number,
+  rooms: Rect[],
+  hazardTile: number,
+  chance: number,
+  startRoom: Rect,
+  stairsX: number,
+  stairsY: number,
+): void {
+  // Skip first room (player spawn) and don't cover stairs
+  for (let i = 1; i < rooms.length; i++) {
+    const room = rooms[i];
+    for (let y = room.y + 1; y < room.y + room.h - 1; y++) {
+      for (let x = room.x + 1; x < room.x + room.w - 1; x++) {
+        if (x === stairsX && y === stairsY) continue;
+        if (map[y * width + x] === Tile.Floor && Math.random() < chance) {
+          map[y * width + x] = hazardTile;
+        }
+      }
+    }
+  }
+  void startRoom; void height;
+}
+
+export function generateDungeon(width: number, height: number, biome: Biome): DungeonResult {
+  const map = new Uint8Array(width * height);
   const rooms: Rect[] = [];
-  const maxRooms = 14 + depth;
+  const maxRooms = 14 + biome.depthStart;
   const minSize = 4;
   const maxSize = 10;
 
@@ -81,12 +107,16 @@ export function generateDungeon(width: number, height: number, depth: number): D
     rooms.push(room);
   }
 
-  // place stairs in last room
+  // Place stairs in last room
   const lastRoom = rooms[rooms.length - 1];
   const [sx, sy] = rectCenter(lastRoom);
   map[sy * width + sx] = Tile.StairsDown;
 
-  const [startX, startY] = rectCenter(rooms[0]);
+  // Scatter biome hazard tiles
+  if (biome.hazardChance > 0 && biome.palette.hazardTile !== Tile.Floor) {
+    scatterHazards(map, width, height, rooms, biome.palette.hazardTile, biome.hazardChance, rooms[0], sx, sy);
+  }
 
+  const [startX, startY] = rectCenter(rooms[0]);
   return { map, width, height, rooms, startX, startY };
 }

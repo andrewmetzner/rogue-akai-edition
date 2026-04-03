@@ -11,9 +11,13 @@ export interface Rect {
 }
 
 export const Tile = {
-  Wall: 0,
-  Floor: 1,
+  Wall:       0,
+  Floor:      1,
   StairsDown: 2,
+  // Biome hazard tiles
+  IceFloor:   3,   // player slides; no damage
+  SlimePool:  4,   // 1 HP/turn
+  LavaFloor:  5,   // 3 HP/turn
 } as const;
 export type Tile = (typeof Tile)[keyof typeof Tile];
 
@@ -63,6 +67,7 @@ export interface Entity {
   stats?: Stats;
   itemKind?: ItemKind;
   level?: number;
+  special?: 'freeze' | 'fireline';
   alive: boolean;
 }
 
@@ -75,6 +80,8 @@ export interface GameState {
   entities: Entity[];
   player: Entity;
   depth: number;
+  biomeId: string;
   turn: number;
+  frozenTurns: number;   // player is frozen (blue, can't move)
   log: string[];
 }

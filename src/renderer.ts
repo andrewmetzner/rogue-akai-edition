@@ -1,6 +1,8 @@
 import { type GameState, Tile, EntityType } from './types';
 import { playerLevel } from './combat';
 import { THEMES, type Theme } from './themes';
+import { getBiome } from './biomes';
+import { type SaveMeta } from './save';
 
 const CELL_W = 14;
 const CELL_H = 20;
@@ -25,20 +27,22 @@ export class Renderer {
 
   get theme(): Theme { return THEMES[this.themeIndex]; }
 
-  applyBodyBg(): void {
-    document.body.style.background = this.theme.bg;
+  applyBodyBg(bgOverride?: string): void {
+    document.body.style.background = bgOverride ?? this.theme.bg;
     document.body.style.color = this.theme.ui;
   }
 
   render(state: GameState): void {
     const t = this.theme;
+    const biome = getBiome(state.depth);
+    const p = biome.palette;
     const { map, mapWidth, visible, explored, entities, player } = state;
 
     const camX = Math.max(0, Math.min(player.x - Math.floor(VIEW_COLS / 2), mapWidth - VIEW_COLS));
     const camY = Math.max(0, Math.min(player.y - Math.floor(VIEW_ROWS / 2), state.mapHeight - VIEW_ROWS));
 
     const ctx = this.ctx;
-    ctx.fillStyle = t.bg;
+    ctx.fillStyle = p.bg;
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.font = FONT;
     ctx.textBaseline = 'top';
@@ -56,13 +60,37 @@ export class Renderer {
 
         let glyph = '';
         let color = '';
+
         switch (tile) {
           case Tile.Wall:
-            glyph = '#'; color = isVisible ? t.wallVis : t.wallSeen; break;
+            glyph = '#';
+            color = isVisible ? p.wallVis : p.wallSeen;
+            break;
           case Tile.Floor:
-            glyph = '.'; color = isVisible ? t.floorVis : t.floorSeen; break;
+            glyph = '.';
+            color = isVisible ? p.floorVis : p.floorSeen;
+            break;
           case Tile.StairsDown:
-            glyph = '>'; color = isVisible ? t.stairsVis : t.stairsSeen; break;
+            glyph = '>';
+            color = isVisible ? p.stairsVis : p.stairsSeen;
+            break;
+          case Tile.IceFloor:
+            glyph = p.hazardGlyph || '\u00b0';
+            color = isVisible ? p.hazardVis : p.hazardSeen;
+            break;
+          case Tile.SlimePool:
+            glyph = p.hazardGlyph || '%';
+            color = isVisible ? p.hazardVis : p.hazardSeen;
+            break;
+          case Tile.LavaFloor:
+            // Lava flickers slightly using time
+            glyph = p.hazardGlyph || '~';
+            if (isVisible) {
+              color = Math.floor(Date.now() / 250) % 2 === 0 ? p.hazardVis : '#ff8800';
+            } else {
+              color = p.hazardSeen;
+            }
+            break;
         }
 
         ctx.fillStyle = color;
@@ -94,8 +122,9 @@ export class Renderer {
       ctx.fillText(e.glyph, vx * CELL_W, vy * CELL_H);
     }
 
-    // Player
-    ctx.fillStyle = t.player;
+    // Player — frozen = blue tint, otherwise theme color
+    const playerColor = state.frozenTurns > 0 ? '#44aaff' : t.player;
+    ctx.fillStyle = playerColor;
     ctx.fillText(player.glyph, (player.x - camX) * CELL_W, (player.y - camY) * CELL_H);
 
     this.renderHUD(state);
@@ -105,37 +134,55 @@ export class Renderer {
     const t = this.theme;
     const s = state.player.stats!;
     const level = playerLevel(s.xp);
+    const biome = getBiome(state.depth);
     const hpPct = s.hp / s.maxHp;
     const hpColor = hpPct > 0.5 ? '#44ff44' : hpPct > 0.25 ? '#ffaa44' : '#ff4444';
     const hpBar = makeBar(s.hp, s.maxHp, 10);
+    const frozenTag = state.frozenTurns > 0 ? ` <span style="color:#44aaff">[FROZEN ${state.frozenTurns}]</span>` : '';
 
     const left = document.getElementById('hud-left')!;
     const right = document.getElementById('hud-right')!;
     left.innerHTML =
       `<span style="color:${hpColor}">HP ${s.hp}/${s.maxHp} ${hpBar}</span>` +
-      `  <span style="color:${t.ui}">ATK ${s.attack}  DEF ${s.defense}</span>`;
+      `  <span style="color:${t.ui}">ATK ${s.attack}  DEF ${s.defense}</span>` +
+      frozenTag;
     right.innerHTML =
       `<span style="color:${t.ui}">LVL ${level}  XP ${s.xp}  </span>` +
-      `<span style="color:${t.accent}">Depth ${state.depth}</span>` +
-      `<span style="color:${t.ui}">  Turn ${state.turn}</span>`;
+      `<span style="color:${biome.palette.stairsVis}">${biome.name} B${state.depth}</span>` +
+      `<span style="color:${t.ui}">  T${state.turn}</span>`;
   }
 
-  renderGameOver(won: boolean): void {
+  renderGameOver(won: boolean, state?: GameState): void {
     const t = this.theme;
     const ctx = this.ctx;
     ctx.fillStyle = 'rgba(0,0,0,0.75)';
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    ctx.font = '36px monospace';
+
     ctx.textAlign = 'center';
+    const cx = this.canvas.width / 2;
+    const cy = this.canvas.height / 2;
+
+    ctx.font = '36px monospace';
     ctx.fillStyle = won ? t.accent : '#ff4444';
-    ctx.fillText(won ? 'YOU WIN!' : 'YOU DIED', this.canvas.width / 2, this.canvas.height / 2 - 24);
+    ctx.fillText(won ? 'YOU WIN!' : 'YOU DIED', cx, cy - 40);
+
+    if (state) {
+      const s = state.player.stats!;
+      ctx.font = '14px monospace';
+      ctx.fillStyle = t.ui;
+      ctx.fillText(
+        `Depth ${state.depth}  •  Turn ${state.turn}  •  Level ${playerLevel(s.xp)}  •  XP ${s.xp}`,
+        cx, cy
+      );
+    }
+
     ctx.font = '16px monospace';
-    ctx.fillStyle = t.ui;
-    ctx.fillText('Press R to restart', this.canvas.width / 2, this.canvas.height / 2 + 20);
+    ctx.fillStyle = t.uiDim;
+    ctx.fillText('Press R to restart', cx, cy + 32);
     ctx.textAlign = 'left';
   }
 
-  renderStartMenu(): void {
+  renderStartMenu(saveMeta: SaveMeta | null, menuSelection: number): void {
     const t = this.theme;
     const ctx = this.ctx;
     const W = this.canvas.width;
@@ -155,13 +202,12 @@ export class Renderer {
     ctx.fillStyle = t.uiDim;
     ctx.fillText('a dungeon crawl in ASCII', cx, 102);
 
-    // Border
-    const border = '\u2500'.repeat(52); // ─────
+    const border = '\u2500'.repeat(52);
     ctx.fillStyle = t.border;
     ctx.font = '13px monospace';
     ctx.fillText(border, cx, 128);
 
-    // Controls table
+    // Controls
     const controls: [string, string][] = [
       ['Move',           'WASD / Arrow Keys / Numpad'],
       ['Diagonal Move',  'Y U B N'],
@@ -174,62 +220,94 @@ export class Renderer {
     ctx.textAlign = 'left';
     const leftX  = cx - 205;
     const rightX = cx - 5;
-    let y = 160;
+    let y = 156;
 
     ctx.fillStyle = t.uiDim;
-    ctx.font = 'bold 13px monospace';
+    ctx.font = 'bold 12px monospace';
     ctx.fillText('Action', leftX, y);
     ctx.fillText('Key', rightX, y);
-    y += 20;
+    y += 18;
 
-    ctx.font = '13px monospace';
+    ctx.font = '12px monospace';
     for (const [action, key] of controls) {
       ctx.fillStyle = t.ui;
       ctx.fillText(action, leftX, y);
       ctx.fillStyle = t.accent;
       ctx.fillText(key, rightX, y);
-      y += 19;
+      y += 17;
     }
 
-    y += 8;
+    y += 6;
     ctx.textAlign = 'center';
     ctx.fillStyle = t.border;
     ctx.fillText(border, cx, y);
 
-    // Symbol legend
-    y += 24;
+    // Legend
+    y += 20;
     ctx.fillStyle = t.uiDim;
-    ctx.font = '12px monospace';
-    ctx.fillText('@ you   r g o T D monsters   ! potion   / scroll   ) sword   [ shield   > stairs', cx, y);
+    ctx.font = '11px monospace';
+    ctx.fillText('@ you   monsters: r g o T D Y I S Z F   items: ! / ) [', cx, y);
+    y += 14;
+    ctx.fillText('hazards: \u00b0 ice (slide)   % slime (-1HP/turn)   ~ lava (-3HP/turn)', cx, y);
+    y += 14;
+    ctx.fillText('14 floors across 4 biomes: Dungeon → Ice → Slime → Fire', cx, y);
 
-    y += 18;
+    // Theme selector
+    y += 22;
     ctx.fillStyle = t.uiDim;
-    ctx.fillText('Descend 7 floors to win.', cx, y);
-
-    // ── Theme selector ────────────────────────────────────────────────────
-    y += 32;
-    ctx.fillStyle = t.uiDim;
-    ctx.font = 'bold 12px monospace';
-    ctx.fillText('STYLE', cx, y);
-
-    y += 18;
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText('STYLE  (← →)', cx, y);
+    y += 16;
     this.drawThemeSelector(ctx, cx, y);
+    y += 50;
 
-    // ── Prompt ────────────────────────────────────────────────────────────
-    y += 52;
-    ctx.font = 'bold 16px monospace';
-    ctx.fillStyle = t.prompt;
-    if (Math.floor(Date.now() / 600) % 2 === 0) {
-      ctx.fillText('[ Press ENTER or SPACE to begin ]', cx, y);
+    // ── Save slot ───────────────────────────────────────────────────────────
+    if (saveMeta) {
+      ctx.fillStyle = t.border;
+      ctx.font = '12px monospace';
+      ctx.fillText(border, cx, y);
+      y += 18;
+
+      ctx.font = 'bold 12px monospace';
+      ctx.fillStyle = t.accent;
+      ctx.fillText('SAVE FILE FOUND', cx, y);
+      y += 16;
+
+      ctx.font = '11px monospace';
+      ctx.fillStyle = t.ui;
+      ctx.fillText(
+        `Depth ${saveMeta.depth}  •  Level ${saveMeta.playerLevel}  •  ` +
+        `HP ${saveMeta.playerHp}/${saveMeta.playerMaxHp}  •  Turn ${saveMeta.turn}`,
+        cx, y
+      );
+      y += 22;
+
+      // Continue / New Game
+      const options = ['Continue', 'New Game'];
+      options.forEach((label, i) => {
+        const selected = i === menuSelection;
+        ctx.font = `${selected ? 'bold ' : ''}15px monospace`;
+        ctx.fillStyle = selected ? t.prompt : t.uiDim;
+        const prefix = selected ? '▶ ' : '  ';
+        ctx.fillText(prefix + label, cx, y);
+        y += 22;
+      });
+    } else {
+      // No save — single prompt
+      y += 8;
+      ctx.font = 'bold 16px monospace';
+      ctx.fillStyle = t.prompt;
+      if (Math.floor(Date.now() / 600) % 2 === 0) {
+        ctx.fillText('[ Press ENTER or SPACE to begin ]', cx, y);
+      }
     }
 
     ctx.textAlign = 'left';
   }
 
   private drawThemeSelector(ctx: CanvasRenderingContext2D, cx: number, y: number): void {
-    // Draw all theme swatches in a row, highlight the active one
     const swatchW = 72;
-    const swatchH = 28;
+    const swatchH = 26;
     const gap = 6;
     const totalW = THEMES.length * (swatchW + gap) - gap;
     let sx = cx - totalW / 2;
@@ -238,45 +316,33 @@ export class Renderer {
       const th = THEMES[i];
       const isSelected = i === this.themeIndex;
 
-      // Swatch background
       ctx.fillStyle = th.bg;
       ctx.fillRect(sx, y, swatchW, swatchH);
-
-      // Border: bright accent if selected, dim otherwise
       ctx.strokeStyle = isSelected ? th.accent : th.border;
       ctx.lineWidth = isSelected ? 2 : 1;
       ctx.strokeRect(sx, y, swatchW, swatchH);
 
-      // Theme name in its own accent color
       ctx.textAlign = 'center';
-      ctx.font = `${isSelected ? 'bold ' : ''}11px monospace`;
+      ctx.font = `${isSelected ? 'bold ' : ''}10px monospace`;
       ctx.fillStyle = isSelected ? th.accent : th.uiDim;
-      ctx.fillText(th.name, sx + swatchW / 2, y + 9);
+      ctx.fillText(th.name, sx + swatchW / 2, y + 7);
 
-      // Mini glyph preview  @  #  .
-      ctx.font = '11px monospace';
+      ctx.font = '10px monospace';
       ctx.fillStyle = th.player;
-      ctx.fillText('@', sx + swatchW / 2 - 12, y + swatchH - 13);
+      ctx.fillText('@', sx + swatchW / 2 - 11, y + swatchH - 11);
       ctx.fillStyle = th.wallVis;
-      ctx.fillText('#', sx + swatchW / 2, y + swatchH - 13);
+      ctx.fillText('#', sx + swatchW / 2, y + swatchH - 11);
       ctx.fillStyle = th.floorVis;
-      ctx.fillText('.', sx + swatchW / 2 + 11, y + swatchH - 13);
+      ctx.fillText('.', sx + swatchW / 2 + 10, y + swatchH - 11);
 
-      // Selection arrow below
       if (isSelected) {
         ctx.fillStyle = th.accent;
-        ctx.font = '12px monospace';
-        ctx.fillText('▲', sx + swatchW / 2, y + swatchH + 4);
+        ctx.font = '10px monospace';
+        ctx.fillText('▲', sx + swatchW / 2, y + swatchH + 3);
       }
 
       sx += swatchW + gap;
     }
-
-    // Navigation hint
-    ctx.textAlign = 'center';
-    ctx.font = '11px monospace';
-    ctx.fillStyle = THEMES[this.themeIndex].uiDim;
-    ctx.fillText('← → to change style', cx, y + swatchH + 20);
   }
 }
 
