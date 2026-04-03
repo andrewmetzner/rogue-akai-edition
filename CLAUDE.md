@@ -76,6 +76,63 @@ These are NOT part of the repo. Only current-project/ is tracked.
 ```
 
 
+## Bugs & Fixes
+
+### [FIXED] Health potion appeared to not heal
+- **Symptom**: Player picked up a health potion, HP bar didn't visibly increase.
+- **Root cause**: UX/readability issue, not a logic error. `tryPickup()` calls
+  `endTurn()` which runs `runMonsters()` before rendering. If a monster attacked
+  the same turn, the net HP change was confusing or zero. The old log message
+  also didn't show before/after HP so there was no way to verify the heal.
+- **Fix** (combat.ts `useItem` HealthPotion case): capture `hpBefore`, apply
+  heal, compute `actual = s.hp - hpBefore`. Message now shows
+  `"recover X HP. (15 → 25/30)"` so the player can verify the heal in the log
+  regardless of what monsters do that same turn.
+- **File**: `src/combat.ts` — `useItem()`, `ItemKind.HealthPotion` case.
+
+
+## Item System & Planned Items
+
+Items live in two places:
+1. `src/types.ts` — `ItemKind` const object defines the ID for every item,
+   including planned ones that are not yet active.
+2. `src/entities.ts` — `ITEMS` array controls what can actually spawn.
+   Items NOT in this array never appear in the dungeon.
+3. `src/combat.ts` — `useItem()` switch handles the effect when used.
+
+**To unlock a planned item**: add it to `ITEMS` in entities.ts (give it a
+glyph, color, name, minDepth), then implement its case in `useItem()`.
+The `ItemKind` value is already reserved in types.ts.
+
+### Implemented
+| Symbol | Name             | Effect                                   |
+|--------|------------------|------------------------------------------|
+| `!`    | Health Potion    | Heals 10–20 HP, capped at maxHp         |
+| `/`    | Lightning Scroll | Zaps nearest monster for 15–25 damage   |
+| `)`    | Sword            | Permanent +3 attack                     |
+| `[`    | Shield           | Permanent +2 defense                    |
+
+### Planned (hooks exist in types.ts + combat.ts, not yet spawning)
+| Kind       | Symbol idea | Planned effect                                        |
+|------------|-------------|-------------------------------------------------------|
+| MagicMap   | `?`         | Reveals all explored tiles on current floor           |
+| Wand       | `\`         | Ranged attack, limited charges (charge count on entity)|
+| IceBomb    | `*`         | Freezes all visible monsters for 1 turn               |
+| Lantern    | `:`         | Temporarily expands FOV radius (e.g. 9 → 14)         |
+| Ring       | `=`         | Random passive stat bonus on pickup (+atk or +def)   |
+| Boots      | `"`         | Speed boost or diagonal move bonus                   |
+| Amulet     | `"`         | Rare, depth 6+ — powerful unique effect per run      |
+
+Notes on planned items:
+- **IceBomb**: needs a `frozen` flag on Entity and monster AI to check it.
+- **Wand**: needs a `charges` field on Entity; depletes on use, can't use at 0.
+- **Lantern**: needs a timed effect — consider adding a `turnEffects` array to
+  GameState `{ effect: string, expiresAt: number }`.
+- **MagicMap**: `explored.fill(1)` on current floor map is the whole implementation.
+- **Ring / Boots**: could use a `passives` array on Stats in the future.
+- **Amulet**: intentionally vague — design when depth 6–7 content is fleshed out.
+
+
 ## Adding Content
 
 Monster — add a template object to the `MONSTERS` array in entities.ts.

@@ -57,14 +57,20 @@ export function playerLevel(xp: number): number {
 export function useItem(player: Entity, kind: ItemKind, entities: Entity[]): string {
   const s = player.stats!;
   switch (kind) {
+
+    // ── Implemented items ──────────────────────────────────────────────────
+
     case ItemKind.HealthPotion: {
+      const hpBefore = s.hp;
       const heal = rng(10, 20);
-      const actual = Math.min(heal, s.maxHp - s.hp);
       s.hp = Math.min(s.hp + heal, s.maxHp);
-      return actual === 0 ? 'You drink the potion but are already at full health.' : `You drink the potion and recover ${actual} HP.`;
+      const actual = s.hp - hpBefore;
+      return actual === 0
+        ? 'You drink the potion but are already at full health.'
+        : `You drink the potion and recover ${actual} HP. (${hpBefore} → ${s.hp}/${s.maxHp})`;
     }
+
     case ItemKind.ScrollLightning: {
-      // zap nearest visible monster
       const target = entities
         .filter(e => e.type === EntityType.Monster && e.alive)
         .sort((a, b) => dist(player, a) - dist(player, b))[0];
@@ -77,14 +83,41 @@ export function useItem(player: Entity, kind: ItemKind, entities: Entity[]): str
       }
       return `Lightning strikes the ${target.name} for ${dmg} damage!`;
     }
+
     case ItemKind.Sword: {
       s.attack += 3;
       return 'You equip the sword. (+3 attack)';
     }
+
     case ItemKind.Shield: {
       s.defense += 2;
       return 'You equip the shield. (+2 defense)';
     }
+
+    // ── Planned items (hooks — not yet spawned) ────────────────────────────
+    // To unlock: add to ITEMS array in entities.ts so they can spawn,
+    // then implement the effect here.
+
+    case ItemKind.MagicMap:
+      return '(not yet implemented)';
+
+    case ItemKind.Wand:
+      return '(not yet implemented)';
+
+    case ItemKind.IceBomb:
+      return '(not yet implemented)';
+
+    case ItemKind.Lantern:
+      return '(not yet implemented)';
+
+    case ItemKind.Ring:
+      return '(not yet implemented)';
+
+    case ItemKind.Boots:
+      return '(not yet implemented)';
+
+    case ItemKind.Amulet:
+      return '(not yet implemented)';
   }
 }
 

@@ -25,10 +25,22 @@ export const EntityType = {
 export type EntityType = (typeof EntityType)[keyof typeof EntityType];
 
 export const ItemKind = {
-  HealthPotion: 0,
-  Sword: 1,
-  Shield: 2,
+  // ── Implemented ──────────────────────────────────────────────────────────
+  HealthPotion:    0,
+  Sword:           1,
+  Shield:          2,
   ScrollLightning: 3,
+
+  // ── Planned (not yet spawned or implemented) ──────────────────────────────
+  // Add to ITEMS array in entities.ts + case in useItem() in combat.ts
+  // when ready to unlock.
+  MagicMap:    10,  // reveals entire current floor
+  Wand:        11,  // ranged attack, limited charges
+  IceBomb:     12,  // freeze all visible monsters 1 turn
+  Lantern:     13,  // temporarily increases FOV radius
+  Ring:        14,  // passive stat bonus (random on pickup)
+  Boots:       15,  // +1 move range or diagonal bonuses
+  Amulet:      16,  // floor-end boss item / special effect
 } as const;
 export type ItemKind = (typeof ItemKind)[keyof typeof ItemKind];
 
