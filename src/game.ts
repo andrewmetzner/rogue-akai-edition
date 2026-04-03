@@ -4,6 +4,7 @@ import { createPlayer, spawnEntities } from './entities';
 import { computeFOV } from './fov';
 import { attackEntity, useItem, monsterAI } from './combat';
 import { Renderer } from './renderer';
+import { THEMES } from './themes';
 
 const MAP_W = 80;
 const MAP_H = 45;
@@ -43,6 +44,7 @@ export class Game {
   private startGame(): void {
     this.atMenu = false;
     cancelAnimationFrame(this.menuAnimId);
+    this.renderer.applyBodyBg();
     this.newGame();
   }
 
@@ -261,7 +263,16 @@ export class Game {
     window.addEventListener('keydown', e => {
       // Menu
       if (this.atMenu) {
-        if (e.key === 'Enter' || e.key === ' ') this.startGame();
+        if (e.key === 'Enter' || e.key === ' ') {
+          this.startGame();
+        } else if (e.key === 'ArrowLeft') {
+          this.renderer.themeIndex = (this.renderer.themeIndex - 1 + THEMES.length) % THEMES.length;
+          this.renderer.applyBodyBg();
+        } else if (e.key === 'ArrowRight') {
+          this.renderer.themeIndex = (this.renderer.themeIndex + 1) % THEMES.length;
+          this.renderer.applyBodyBg();
+        }
+        e.preventDefault();
         return;
       }
 
