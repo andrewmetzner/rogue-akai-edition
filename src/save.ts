@@ -31,6 +31,8 @@ interface SaveData {
   entities: object[];
   depth: number;
   biomeId: string;
+  classId: string;
+  fovRadius: number;
   turn: number;
   log: string[];
 }
@@ -57,6 +59,8 @@ export function saveGame(state: GameState, biomeId: string, themeIndex: number):
     entities:  state.entities,
     depth:     state.depth,
     biomeId,
+    classId:   state.classId,
+    fovRadius: state.fovRadius,
     turn:      state.turn,
     log:       state.log,
   };
@@ -111,6 +115,8 @@ export function loadGame(): LoadedGame | null {
       entities:    data.entities as any[],
       depth:       data.depth,
       biomeId:     data.biomeId,
+      classId:     data.classId ?? 'warrior',
+      fovRadius:   data.fovRadius ?? 9,
       turn:        data.turn,
       frozenTurns: 0,
       log:         data.log,

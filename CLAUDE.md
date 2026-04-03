@@ -76,7 +76,35 @@ These are NOT part of the repo. Only current-project/ is tracked.
 ```
 
 
-## Biome System
+## Class System (Roguelite)
+
+Classes defined in `src/classes.ts`. Selected on the class select screen before each run.
+`createPlayer()` in `entities.ts` accepts a `CharClass` and applies stat differences.
+
+| Class   | HP | ATK | DEF | FOV    | Starting gear / consumables          |
+|---------|----|-----|-----|--------|--------------------------------------|
+| Warrior | 45 | 7   | 4   | 9      | Health Potion                        |
+| Rogue   | 24 | 12* | 1   | 10     | Sword (applied to ATK, not on floor) |
+| Mage    | 20 | 4   | 1   | 9      | ×2 Lightning Scrolls (on floor)      |
+| Ranger  | 28 | 6   | 2   | 14     | Nothing                              |
+| Paladin | 35 | 8*  | 6*  | 9      | Shield (applied) + Health Potion     |
+
+`*` = gear items are permanent stat bonuses, applied by `createPlayer()`, not spawned.
+Consumables (potions/scrolls) are spawned at player's start position via `spawnStartItems()`.
+`fovBonus` in CharClass is added to `BASE_FOV (9)` and stored as `state.fovRadius`.
+
+### Game screen state machine
+```
+menu → classSelect → playing ↔ paused
+                   ↘ over → classSelect (R to retry)
+```
+- ESC during play opens pause menu (overlay, game still rendered underneath)
+- Pause options: Resume (ESC or Enter on Resume) | Save & Quit (saves + returns to menu)
+- Death / victory → `over` screen — R goes to class select for a new run
+- Loading a save skips class select entirely
+
+
+## Save / Load (Roguelike Permadeath)
 
 14 total floors across 4 biomes (defined in `src/biomes.ts`):
 
@@ -196,6 +224,17 @@ The user plans to create sibling experiment folders for feature branches:
 These should be self-contained copies (or symlinks) of current-project
 with modifications applied. Do not merge experimental changes back without
 the user's explicit instruction.
+
+
+## Start Menu Content Rules
+
+The start screen should show controls and symbols. It must NOT include:
+- How many total floors there are
+- How many biomes there are
+- Any control style labels (e.g. "vim style", "numpad style")
+- Any internal implementation details
+
+Keep the menu discovery-friendly — let the player find the biomes themselves.
 
 
 ## Run / Build

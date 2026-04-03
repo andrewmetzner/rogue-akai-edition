@@ -1,4 +1,5 @@
 import { type Entity, EntityType, ItemKind, type Rect, type Stats, Tile } from './types';
+import { type CharClass } from './classes';
 
 let nextId = 1;
 
@@ -6,17 +7,55 @@ function makeStats(hp: number, attack: number, defense: number): Stats {
   return { hp, maxHp: hp, attack, defense, xp: 0 };
 }
 
-export function createPlayer(x: number, y: number): Entity {
+export function createPlayer(x: number, y: number, cls: CharClass): Entity {
+  // Apply permanent gear bonuses (sword/shield) directly to base stats
+  let atkBonus = 0, defBonus = 0;
+  for (const kind of cls.gearItems) {
+    if (kind === ItemKind.Sword)   atkBonus += 3;
+    if (kind === ItemKind.Shield)  defBonus += 2;
+  }
+  const atk = cls.attack + atkBonus;
+  const def = cls.defense + defBonus;
   return {
     id: nextId++,
     x, y,
     type: EntityType.Player,
     glyph: '@',
     color: '#fff',
-    name: 'Player',
-    stats: { hp: 30, maxHp: 30, attack: 5, defense: 2, xp: 0 },
+    name: cls.name,
+    stats: { hp: cls.hp, maxHp: cls.hp, attack: atk, defense: def, xp: 0 },
     alive: true,
   };
+}
+
+/** Spawn consumable starting items at the player's starting position. */
+export function spawnStartItems(cls: CharClass, x: number, y: number): Entity[] {
+  const itemDefs: Record<ItemKind, { glyph: string; color: string; name: string }> = {
+    [ItemKind.HealthPotion]:    { glyph: '!', color: '#f44', name: 'Health Potion' },
+    [ItemKind.ScrollLightning]: { glyph: '/', color: '#fa4', name: 'Lightning Scroll' },
+    [ItemKind.Sword]:           { glyph: ')', color: '#aaf', name: 'Sword' },
+    [ItemKind.Shield]:          { glyph: '[', color: '#4af', name: 'Shield' },
+    [ItemKind.MagicMap]:        { glyph: '?', color: '#fff', name: 'Magic Map' },
+    [ItemKind.Wand]:            { glyph: '\\', color: '#fa4', name: 'Wand' },
+    [ItemKind.IceBomb]:         { glyph: '*', color: '#4af', name: 'Ice Bomb' },
+    [ItemKind.Lantern]:         { glyph: ':', color: '#ff8', name: 'Lantern' },
+    [ItemKind.Ring]:            { glyph: '=', color: '#faf', name: 'Ring' },
+    [ItemKind.Boots]:           { glyph: '"', color: '#aaa', name: 'Boots' },
+    [ItemKind.Amulet]:          { glyph: '"', color: '#ff8', name: 'Amulet' },
+  };
+  return cls.consumables.map(kind => {
+    const def = itemDefs[kind];
+    return {
+      id: nextId++,
+      x, y,
+      type: EntityType.Item,
+      glyph: def.glyph,
+      color: def.color,
+      name: def.name,
+      itemKind: kind,
+      alive: true,
+    };
+  });
 }
 
 interface MonsterTemplate {

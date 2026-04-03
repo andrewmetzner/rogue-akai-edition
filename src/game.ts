@@ -1,30 +1,42 @@
 import { type GameState, type Entity, EntityType, Tile } from './types';
 import { generateDungeon } from './dungeon';
-import { createPlayer, spawnEntities } from './entities';
+import { createPlayer, spawnEntities, spawnStartItems } from './entities';
 import { computeFOV } from './fov';
 import { attackEntity, useItem, monsterAI, playerLevel } from './combat';
 import { Renderer } from './renderer';
 import { THEMES } from './themes';
 import { getBiome } from './biomes';
+import { CLASSES, type CharClass } from './classes';
 import { audio } from './audio';
 import { saveGame, deleteSave, loadSaveMeta, loadGame, type SaveMeta } from './save';
 
 const MAP_W = 80;
 const MAP_H = 45;
-const FOV_RADIUS = 9;
+const BASE_FOV = 9;
 const MAX_DEPTH = 28;
 const MAX_LOG = 6;
-const SAVE_INTERVAL = 10; // auto-save every N turns
+const SAVE_INTERVAL = 10;
+
+type Screen = 'menu' | 'classSelect' | 'playing' | 'paused' | 'over';
 
 export class Game {
   private state!: GameState;
   private renderer: Renderer;
-  private over = false;
-  private won = false;
-  private atMenu = true;
-  private menuAnimId = 0;
-  private menuSelection = 0; // 0=Continue 1=New Game (when save exists)
+  private screen: Screen = 'menu';
+  private animId = 0;
+
+  // Menu state
   private saveMeta: SaveMeta | null = null;
+  private menuSelection = 0;   // 0=Continue 1=New Game
+
+  // Class select state
+  private classIndex = 0;
+
+  // Pause state
+  private pauseSelection = 0;  // 0=Resume 1=Save&Quit
+
+  // Game-over outcome
+  private won = false;
 
   constructor() {
     this.renderer = new Renderer('canvas');
@@ -32,83 +44,45 @@ export class Game {
     this.showMenu();
   }
 
-  // ── Start menu ────────────────────────────────────────────────────────────
+  // ── Screen transitions ────────────────────────────────────────────────────
 
   private showMenu(): void {
-    this.atMenu = true;
+    this.screen = 'menu';
     this.saveMeta = loadSaveMeta();
-    this.menuSelection = 0; // default: Continue (if save exists) or New Game
+    this.menuSelection = 0;
     document.getElementById('hud-left')!.textContent = '';
     document.getElementById('hud-right')!.textContent = '';
     document.getElementById('log')!.innerHTML = '';
-    const loop = () => {
-      if (!this.atMenu) return;
-      this.renderer.renderStartMenu(this.saveMeta, this.menuSelection);
-      this.menuAnimId = requestAnimationFrame(loop);
-    };
-    this.menuAnimId = requestAnimationFrame(loop);
+    this.startAnimLoop();
   }
 
-  private startFromMenu(): void {
-    this.atMenu = false;
-    cancelAnimationFrame(this.menuAnimId);
+  private showClassSelect(): void {
+    this.screen = 'classSelect';
+    this.classIndex = 0;
+    this.startAnimLoop();
+  }
 
+  private startGame(cls: CharClass): void {
+    this.stopAnimLoop();
+    this.screen = 'playing';
     const biome = getBiome(1);
     this.renderer.applyBodyBg(biome.palette.bg);
     audio.start();
-
-    if (this.saveMeta && this.menuSelection === 0) {
-      this.loadSavedGame();
-    } else {
-      deleteSave();
-      this.newGame();
-    }
-  }
-
-  // ── Game lifecycle ────────────────────────────────────────────────────────
-
-  private newGame(): void {
-    const depth = 1;
-    const biome = getBiome(depth);
-    const dungeon = generateDungeon(MAP_W, MAP_H, biome);
-    const player = createPlayer(dungeon.startX, dungeon.startY);
-    const entities = spawnEntities(dungeon.rooms, dungeon.map, dungeon.width, depth, player.x, player.y);
-
-    this.state = {
-      map:      dungeon.map,
-      mapWidth: dungeon.width,
-      mapHeight: dungeon.height,
-      visible:  new Uint8Array(dungeon.width * dungeon.height),
-      explored: new Uint8Array(dungeon.width * dungeon.height),
-      entities,
-      player,
-      depth,
-      biomeId: biome.id,
-      turn: 0,
-      frozenTurns: 0,
-      log: ['Welcome! Move to explore. G=pick up item, >=descend stairs.'],
-    };
-    this.over = false;
-    this.won = false;
-    this.updateFOV();
-    this.render();
-    this.renderLog();
+    this.newGame(cls);
   }
 
   private loadSavedGame(): void {
     const loaded = loadGame();
-    if (!loaded) { this.newGame(); return; }
+    if (!loaded) { this.showClassSelect(); return; }
 
     const biome = getBiome(loaded.state.depth);
     this.state = {
       ...loaded.state,
       visible: new Uint8Array(loaded.state.mapWidth * loaded.state.mapHeight),
-      frozenTurns: 0,
-      biomeId: loaded.biomeId,
     };
     this.renderer.themeIndex = loaded.themeIndex;
     this.renderer.applyBodyBg(biome.palette.bg);
-    this.over = false;
+    this.screen = 'playing';
     this.won = false;
     this.updateFOV();
     this.render();
@@ -116,14 +90,81 @@ export class Game {
     this.addLog(`Welcome back. Depth ${this.state.depth} — ${biome.name}.`);
   }
 
+  private openPause(): void {
+    this.screen = 'paused';
+    this.pauseSelection = 0;
+    this.render(); // draw game + overlay once
+  }
+
+  private closePause(): void {
+    this.screen = 'playing';
+    this.render();
+  }
+
+  // ── rAF loop (menu + class select only) ──────────────────────────────────
+
+  private startAnimLoop(): void {
+    this.stopAnimLoop();
+    const loop = () => {
+      if (this.screen !== 'menu' && this.screen !== 'classSelect') return;
+      if (this.screen === 'menu') {
+        this.renderer.renderStartMenu(this.saveMeta, this.menuSelection);
+      } else {
+        this.renderer.renderClassSelect(this.classIndex);
+      }
+      this.animId = requestAnimationFrame(loop);
+    };
+    this.animId = requestAnimationFrame(loop);
+  }
+
+  private stopAnimLoop(): void {
+    cancelAnimationFrame(this.animId);
+  }
+
+  // ── Game lifecycle ────────────────────────────────────────────────────────
+
+  private newGame(cls: CharClass): void {
+    const depth = 1;
+    const biome = getBiome(depth);
+    const dungeon = generateDungeon(MAP_W, MAP_H, biome);
+    const fovRadius = BASE_FOV + cls.fovBonus;
+    const player = createPlayer(dungeon.startX, dungeon.startY, cls);
+    const entities = spawnEntities(dungeon.rooms, dungeon.map, dungeon.width, depth, player.x, player.y);
+    const startItems = spawnStartItems(cls, dungeon.startX, dungeon.startY);
+
+    this.state = {
+      map:      dungeon.map,
+      mapWidth: dungeon.width,
+      mapHeight: dungeon.height,
+      visible:  new Uint8Array(dungeon.width * dungeon.height),
+      explored: new Uint8Array(dungeon.width * dungeon.height),
+      entities: [...entities, ...startItems],
+      player,
+      depth,
+      biomeId:  biome.id,
+      classId:  cls.id,
+      fovRadius,
+      turn: 0,
+      frozenTurns: 0,
+      log: [`You enter the dungeon as a ${cls.name}. Good luck.`],
+    };
+    this.won = false;
+    this.updateFOV();
+    this.render();
+    this.renderLog();
+    if (startItems.length > 0) {
+      this.addLog(`Starting items are at your feet — press G to pick them up.`);
+    }
+  }
+
   private descend(): void {
     const depth = this.state.depth + 1;
     if (depth > MAX_DEPTH) {
       this.won = true;
-      this.over = true;
+      this.screen = 'over';
       deleteSave();
       audio.victory();
-      this.renderer.renderGameOver(true, this.state);
+      this.render();
       return;
     }
 
@@ -144,7 +185,7 @@ export class Game {
       explored: new Uint8Array(dungeon.width * dungeon.height),
       entities,
       depth,
-      biomeId: biome.id,
+      biomeId:  biome.id,
       frozenTurns: 0,
     };
 
@@ -155,7 +196,7 @@ export class Game {
     this.render();
   }
 
-  // ── Save / Load ───────────────────────────────────────────────────────────
+  // ── Save ──────────────────────────────────────────────────────────────────
 
   private writeSave(): void {
     saveGame(this.state, this.state.biomeId, this.renderer.themeIndex);
@@ -165,8 +206,8 @@ export class Game {
   // ── Core systems ──────────────────────────────────────────────────────────
 
   private updateFOV(): void {
-    const { map, mapWidth, mapHeight, visible, explored, player } = this.state;
-    computeFOV(visible, mapWidth, mapHeight, player.x, player.y, FOV_RADIUS, (x, y) => {
+    const { map, mapWidth, mapHeight, visible, explored, player, fovRadius } = this.state;
+    computeFOV(visible, mapWidth, mapHeight, player.x, player.y, fovRadius, (x, y) => {
       if (x < 0 || x >= mapWidth || y < 0 || y >= mapHeight) return true;
       return map[y * mapWidth + x] === Tile.Wall;
     });
@@ -189,10 +230,17 @@ export class Game {
   }
 
   private render(): void {
-    if (this.over) {
-      this.renderer.renderGameOver(this.won, this.state);
-    } else {
-      this.renderer.render(this.state);
+    switch (this.screen) {
+      case 'playing':
+        this.renderer.render(this.state);
+        break;
+      case 'paused':
+        this.renderer.render(this.state);
+        this.renderer.renderPauseMenu(this.pauseSelection);
+        break;
+      case 'over':
+        this.renderer.renderGameOver(this.won, this.state);
+        break;
     }
   }
 
@@ -209,8 +257,7 @@ export class Game {
   }
 
   private canWalk(x: number, y: number): boolean {
-    const t = this.tileAt(x, y);
-    return t !== Tile.Wall;
+    return this.tileAt(x, y) !== Tile.Wall;
   }
 
   // ── Biome hazards ─────────────────────────────────────────────────────────
@@ -219,32 +266,28 @@ export class Game {
     const tile = this.tileAt(this.state.player.x, this.state.player.y);
     const s = this.state.player.stats!;
     if (tile === Tile.LavaFloor) {
-      const dmg = 3;
-      s.hp -= dmg;
+      s.hp -= 3;
       audio.lava();
-      this.addLog(`The lava sears your flesh! (-${dmg} HP)`);
+      this.addLog('The lava sears your flesh! (-3 HP)');
     } else if (tile === Tile.SlimePool) {
-      const dmg = 1;
-      s.hp -= dmg;
+      s.hp -= 1;
       audio.slime();
-      this.addLog(`The slime burns! (-${dmg} HP)`);
+      this.addLog('The slime burns! (-1 HP)');
     }
   }
 
-  /** Try to slide on ice: keep moving in direction until non-ice or wall. */
-  private applyIceSlide(dx: number, dy: number): boolean {
+  private applyIceSlide(dx: number, dy: number): void {
     const { player } = this.state;
-    if (this.tileAt(player.x, player.y) !== Tile.IceFloor) return false;
+    if (this.tileAt(player.x, player.y) !== Tile.IceFloor) return;
 
     let slid = false;
-    for (let step = 0; step < 10; step++) {
+    for (let step = 0; step < 12; step++) {
       const nx = player.x + dx;
       const ny = player.y + dy;
       const nextTile = this.tileAt(nx, ny);
       if (nextTile === Tile.Wall) break;
       const blocker = this.entityAt(nx, ny);
       if (blocker?.type === EntityType.Monster) {
-        // Slam into monster while sliding
         const prevLevel = playerLevel(player.stats!.xp);
         audio.attack();
         this.addLog(attackEntity(player, blocker));
@@ -268,13 +311,11 @@ export class Game {
       audio.ice();
       this.addLog('You slide across the ice!');
     }
-    return slid;
   }
 
   // ── Player actions ────────────────────────────────────────────────────────
 
   private tryMove(dx: number, dy: number): void {
-    if (this.over) return;
     if (this.state.frozenTurns > 0) {
       this.state.frozenTurns--;
       this.addLog(`You are frozen! (${this.state.frozenTurns} turns remaining)`);
@@ -304,33 +345,25 @@ export class Game {
       return;
     }
 
-    if (!this.canWalk(nx, ny)) {
-      audio.bump();
-      return;
-    }
+    if (!this.canWalk(nx, ny)) { audio.bump(); return; }
 
     player.x = nx;
     player.y = ny;
     audio.step();
-
-    // Ice sliding (recursive until non-ice)
     this.applyIceSlide(dx, dy);
 
     if (this.tileAt(player.x, player.y) === Tile.StairsDown) {
       this.addLog('You see stairs leading down. Press > to descend.');
     }
-
     this.endTurn();
   }
 
   private tryPickup(): void {
-    if (this.over) return;
     const { player, entities } = this.state;
     const item = entities.find(
       e => e.type === EntityType.Item && e.alive && e.x === player.x && e.y === player.y
     );
     if (!item) { this.addLog('Nothing to pick up here.'); return; }
-
     audio.pickup();
     const msg = useItem(player, item.itemKind!, entities);
     item.alive = false;
@@ -339,7 +372,6 @@ export class Game {
   }
 
   private tryDescend(): void {
-    if (this.over) return;
     if (this.tileAt(this.state.player.x, this.state.player.y) === Tile.StairsDown) {
       this.descend();
     } else {
@@ -348,19 +380,12 @@ export class Game {
   }
 
   private endTurn(): void {
-    if (this.over) return;
     this.state.turn++;
-
-    // Hazard damage before monsters act
     this.applyHazardDamage();
     if (this.checkDeath()) return;
-
     this.runMonsters();
     if (this.checkDeath()) return;
-
-    // Auto-save periodically
     if (this.state.turn % SAVE_INTERVAL === 0) this.writeSave();
-
     this.updateFOV();
     this.render();
   }
@@ -368,26 +393,26 @@ export class Game {
   private checkDeath(): boolean {
     if (this.state.player.alive && this.state.player.stats!.hp > 0) return false;
     this.state.player.alive = false;
-    this.over = true;
+    this.screen = 'over';
     this.won = false;
-    deleteSave(); // permadeath — save is gone
+    deleteSave();
     audio.death();
-    this.addLog('You have died... Press R to restart.');
+    this.addLog('You have died. Press R to try again.');
     this.updateFOV();
-    this.renderer.renderGameOver(false, this.state);
+    this.render();
     return true;
   }
 
   // ── Monster AI ────────────────────────────────────────────────────────────
 
   private runMonsters(): void {
-    const { entities, player, visible, mapWidth, map, mapWidth: mw } = this.state;
+    const { entities, player, visible, mapWidth, map } = this.state;
+    const mw = mapWidth;
     let playerHurt = false;
     let frozePlayer = false;
 
     for (const e of entities) {
       if (e.type !== EntityType.Monster || !e.alive) continue;
-
       const idx = e.y * mapWidth + e.x;
       if (!visible[idx]) continue;
 
@@ -396,7 +421,6 @@ export class Game {
       const adjacent = Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && (dx !== 0 || dy !== 0);
 
       if (adjacent) {
-        // Special attacks
         if (e.special === 'freeze') {
           this.addLog(attackEntity(e, player));
           this.state.frozenTurns = 2;
@@ -405,11 +429,9 @@ export class Game {
           continue;
         }
         if (e.special === 'fireline') {
-          // Breathe fire in a 3-tile line from dragon toward player
           const stepX = Math.sign(dx);
           const stepY = Math.sign(dy);
-          let fx = e.x, fy = e.y;
-          let torched = 0;
+          let fx = e.x, fy = e.y, torched = 0;
           for (let i = 0; i < 4 && torched < 3; i++) {
             fx += stepX; fy += stepY;
             if (fx < 0 || fy < 0 || fx >= mw || fy >= this.state.mapHeight) break;
@@ -426,7 +448,6 @@ export class Game {
           playerHurt = true;
           continue;
         }
-        // Normal attack
         this.addLog(attackEntity(e, player));
         playerHurt = true;
         continue;
@@ -454,44 +475,84 @@ export class Game {
 
   private bindKeys(): void {
     window.addEventListener('keydown', e => {
-      // Menu
-      if (this.atMenu) {
-        if (e.key === 'Enter' || e.key === ' ') {
-          this.startFromMenu();
-        } else if (e.key === 'ArrowLeft') {
-          this.renderer.themeIndex = (this.renderer.themeIndex - 1 + THEMES.length) % THEMES.length;
-          this.renderer.applyBodyBg();
-        } else if (e.key === 'ArrowRight') {
-          this.renderer.themeIndex = (this.renderer.themeIndex + 1) % THEMES.length;
-          this.renderer.applyBodyBg();
-        } else if (this.saveMeta && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-          this.menuSelection = this.menuSelection === 0 ? 1 : 0;
-        }
-        e.preventDefault();
-        return;
-      }
+      switch (this.screen) {
 
-      // Post-game
-      if (this.over) {
-        if (e.key === 'r' || e.key === 'R') this.newGame();
-        return;
-      }
+        case 'menu':
+          if (e.key === 'Enter' || e.key === ' ') {
+            this.stopAnimLoop();
+            if (this.saveMeta && this.menuSelection === 0) {
+              this.loadSavedGame();
+            } else {
+              deleteSave();
+              this.showClassSelect();
+            }
+          } else if (e.key === 'ArrowLeft') {
+            this.renderer.themeIndex = (this.renderer.themeIndex - 1 + THEMES.length) % THEMES.length;
+            this.renderer.applyBodyBg();
+          } else if (e.key === 'ArrowRight') {
+            this.renderer.themeIndex = (this.renderer.themeIndex + 1) % THEMES.length;
+            this.renderer.applyBodyBg();
+          } else if (this.saveMeta && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+            this.menuSelection = this.menuSelection === 0 ? 1 : 0;
+          }
+          e.preventDefault();
+          break;
 
-      switch (e.key) {
-        case 'ArrowUp':    case 'w': case 'W': case 'k': this.tryMove(0, -1);  break;
-        case 'ArrowDown':  case 's': case 'S': case 'j': this.tryMove(0,  1);  break;
-        case 'ArrowLeft':  case 'a': case 'A': case 'h': this.tryMove(-1, 0);  break;
-        case 'ArrowRight': case 'd': case 'D': case 'l': this.tryMove( 1, 0);  break;
-        case 'y': case '7': this.tryMove(-1, -1); break;
-        case 'u': case '9': this.tryMove( 1, -1); break;
-        case 'b': case '1': this.tryMove(-1,  1); break;
-        case 'n': case '3': this.tryMove( 1,  1); break;
-        case '.': case '5': this.endTurn();        break;
-        case 'g': case 'G': this.tryPickup();      break;
-        case '>':           this.tryDescend();     break;
-        default: return;
+        case 'classSelect':
+          if (e.key === 'ArrowLeft') {
+            this.classIndex = (this.classIndex - 1 + CLASSES.length) % CLASSES.length;
+          } else if (e.key === 'ArrowRight') {
+            this.classIndex = (this.classIndex + 1) % CLASSES.length;
+          } else if (e.key === 'Enter' || e.key === ' ') {
+            this.startGame(CLASSES[this.classIndex]);
+          } else if (e.key === 'Escape') {
+            this.stopAnimLoop();
+            this.showMenu();
+          }
+          e.preventDefault();
+          break;
+
+        case 'playing':
+          if (e.key === 'Escape') { this.openPause(); e.preventDefault(); break; }
+          switch (e.key) {
+            case 'ArrowUp':    case 'w': case 'W': case 'k': this.tryMove(0, -1);  break;
+            case 'ArrowDown':  case 's': case 'S': case 'j': this.tryMove(0,  1);  break;
+            case 'ArrowLeft':  case 'a': case 'A': case 'h': this.tryMove(-1, 0);  break;
+            case 'ArrowRight': case 'd': case 'D': case 'l': this.tryMove( 1, 0);  break;
+            case 'y': case '7': this.tryMove(-1, -1); break;
+            case 'u': case '9': this.tryMove( 1, -1); break;
+            case 'b': case '1': this.tryMove(-1,  1); break;
+            case 'n': case '3': this.tryMove( 1,  1); break;
+            case '.': case '5': this.endTurn();        break;
+            case 'g': case 'G': this.tryPickup();      break;
+            case '>':           this.tryDescend();     break;
+            default: return;
+          }
+          e.preventDefault();
+          break;
+
+        case 'paused':
+          if (e.key === 'Escape') {
+            this.closePause();
+          } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            this.pauseSelection = this.pauseSelection === 0 ? 1 : 0;
+            this.render();
+          } else if (e.key === 'Enter' || e.key === ' ') {
+            if (this.pauseSelection === 0) {
+              this.closePause();
+            } else {
+              // Save & Quit
+              this.writeSave();
+              this.showMenu();
+            }
+          }
+          e.preventDefault();
+          break;
+
+        case 'over':
+          if (e.key === 'r' || e.key === 'R') this.showClassSelect();
+          break;
       }
-      e.preventDefault();
     });
   }
 }

@@ -3,6 +3,7 @@ import { playerLevel } from './combat';
 import { THEMES, type Theme } from './themes';
 import { getBiome } from './biomes';
 import { type SaveMeta } from './save';
+import { CLASSES } from './classes';
 
 const CELL_W = 14;
 const CELL_H = 20;
@@ -301,6 +302,229 @@ export class Renderer {
         ctx.fillText('[ Press ENTER or SPACE to begin ]', cx, y);
       }
     }
+
+    ctx.textAlign = 'left';
+  }
+
+  // ── Class Select ─────────────────────────────────────────────────────────
+
+  renderClassSelect(classIndex: number): void {
+    const t = this.theme;
+    const ctx = this.ctx;
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    const cx = W / 2;
+    const cls = CLASSES[classIndex];
+
+    ctx.fillStyle = t.bg;
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+
+    // Title
+    ctx.font = 'bold 22px monospace';
+    ctx.fillStyle = t.accent;
+    ctx.fillText('CHOOSE YOUR CLASS', cx, 32);
+
+    ctx.font = '12px monospace';
+    ctx.fillStyle = t.uiDim;
+    ctx.fillText('← → to browse   ENTER to begin', cx, 58);
+
+    // Class tabs row
+    const tabW = 120;
+    const tabH = 30;
+    const tabGap = 8;
+    const totalTabW = CLASSES.length * (tabW + tabGap) - tabGap;
+    let tx = cx - totalTabW / 2;
+    const tabY = 78;
+
+    for (let i = 0; i < CLASSES.length; i++) {
+      const c = CLASSES[i];
+      const isSel = i === classIndex;
+      ctx.fillStyle = isSel ? c.color + '33' : t.bg;
+      ctx.fillRect(tx, tabY, tabW, tabH);
+      ctx.strokeStyle = isSel ? c.color : t.border;
+      ctx.lineWidth = isSel ? 2 : 1;
+      ctx.strokeRect(tx, tabY, tabW, tabH);
+      ctx.font = `${isSel ? 'bold ' : ''}12px monospace`;
+      ctx.fillStyle = isSel ? c.color : t.uiDim;
+      ctx.textAlign = 'center';
+      ctx.fillText(c.name, tx + tabW / 2, tabY + 10);
+      tx += tabW + tabGap;
+    }
+
+    // ── Detail card for selected class ────────────────────────────────────
+    const cardX = cx - 280;
+    const cardY = tabY + tabH + 18;
+    const cardW = 560;
+    const cardH = 330;
+
+    // Card bg + border
+    ctx.fillStyle = cls.color + '11';
+    ctx.fillRect(cardX, cardY, cardW, cardH);
+    ctx.strokeStyle = cls.color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(cardX, cardY, cardW, cardH);
+
+    // Big class icon
+    ctx.font = 'bold 72px monospace';
+    ctx.fillStyle = cls.color + 'aa';
+    ctx.textAlign = 'center';
+    ctx.fillText(cls.icon, cardX + 80, cardY + 20);
+
+    // Class name + tagline
+    ctx.font = 'bold 20px monospace';
+    ctx.fillStyle = cls.color;
+    ctx.textAlign = 'left';
+    ctx.fillText(cls.name, cardX + 150, cardY + 24);
+
+    ctx.font = '13px monospace';
+    ctx.fillStyle = t.uiDim;
+    ctx.fillText(cls.tagline, cardX + 150, cardY + 46);
+
+    // Description (word-wrapped manually across ~50 chars)
+    ctx.font = '12px monospace';
+    ctx.fillStyle = t.ui;
+    const words = cls.description.split(' ');
+    let line = '';
+    let dy = cardY + 72;
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (test.length > 52) {
+        ctx.fillText(line, cardX + 150, dy);
+        line = word;
+        dy += 16;
+      } else {
+        line = test;
+      }
+    }
+    if (line) { ctx.fillText(line, cardX + 150, dy); dy += 16; }
+
+    // ── Stats block ────────────────────────────────────────────────────────
+    const statsY = cardY + 140;
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = t.uiDim;
+    ctx.fillText('STATS', cardX + 20, statsY);
+
+    const stats: [string, number | string][] = [
+      ['HP',      cls.hp],
+      ['ATK',     cls.attack + (cls.gearItems.filter(k => k === 3 /* ItemKind.Sword */).length * 3)],
+      ['DEF',     cls.defense + (cls.gearItems.filter(k => k === 2 /* ItemKind.Shield */).length * 2)],
+      ['FOV',     `${9 + cls.fovBonus} tiles${cls.fovBonus > 0 ? ` (+${cls.fovBonus})` : ''}`],
+    ];
+    ctx.font = '12px monospace';
+    stats.forEach(([label, val], i) => {
+      ctx.fillStyle = t.uiDim;
+      ctx.fillText(label, cardX + 20, statsY + 18 + i * 18);
+      ctx.fillStyle = cls.color;
+      ctx.fillText(String(val), cardX + 70, statsY + 18 + i * 18);
+    });
+
+    // Visual HP / ATK / DEF bars
+    const barX = cardX + 120;
+    const maxStat = { HP: 50, ATK: 15, DEF: 8 };
+    [['HP', cls.hp, maxStat.HP], ['ATK', cls.attack, maxStat.ATK], ['DEF', cls.defense, maxStat.DEF]].forEach(([, val, max], i) => {
+      const pct = (val as number) / (max as number);
+      const bW = 160;
+      ctx.fillStyle = t.border;
+      ctx.fillRect(barX, statsY + 21 + i * 18, bW, 8);
+      ctx.fillStyle = cls.color;
+      ctx.fillRect(barX, statsY + 21 + i * 18, Math.round(bW * pct), 8);
+    });
+
+    // ── Starting gear ──────────────────────────────────────────────────────
+    const gearY = statsY;
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = t.uiDim;
+    ctx.textAlign = 'right';
+    ctx.fillText('STARTING GEAR', cardX + cardW - 20, gearY);
+
+    const itemNames: Record<number, string> = {
+      0: '! Health Potion',
+      3: '/ Lightning Scroll',
+      1: ') Sword (+3 ATK)',
+      2: '[ Shield (+2 DEF)',
+    };
+    const allItems = [...cls.gearItems, ...cls.consumables];
+    ctx.font = '12px monospace';
+    if (allItems.length === 0) {
+      ctx.fillStyle = t.uiDim;
+      ctx.fillText('Nothing — just grit', cardX + cardW - 20, gearY + 18);
+    } else {
+      allItems.forEach((kind, i) => {
+        ctx.fillStyle = cls.color;
+        ctx.fillText(itemNames[kind] ?? `Item ${kind}`, cardX + cardW - 20, gearY + 18 + i * 18);
+      });
+    }
+
+    ctx.textAlign = 'left';
+
+    // ── Confirm prompt ────────────────────────────────────────────────────
+    const promptY = cardY + cardH + 22;
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 15px monospace';
+    ctx.fillStyle = t.prompt;
+    if (Math.floor(Date.now() / 500) % 2 === 0) {
+      ctx.fillText(`[ Press ENTER to play as ${cls.name} ]`, cx, promptY);
+    }
+
+    ctx.textAlign = 'left';
+  }
+
+  // ── Pause menu ────────────────────────────────────────────────────────────
+
+  renderPauseMenu(selection: number): void {
+    const t = this.theme;
+    const ctx = this.ctx;
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    const cx = W / 2;
+    const cy = H / 2;
+
+    // Dark overlay
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Box
+    const boxW = 300;
+    const boxH = 180;
+    const bx = cx - boxW / 2;
+    const by = cy - boxH / 2;
+
+    ctx.fillStyle = t.bg;
+    ctx.fillRect(bx, by, boxW, boxH);
+    ctx.strokeStyle = t.accent;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(bx, by, boxW, boxH);
+
+    ctx.textAlign = 'center';
+
+    ctx.font = 'bold 18px monospace';
+    ctx.fillStyle = t.accent;
+    ctx.fillText('PAUSED', cx, by + 28);
+
+    ctx.fillStyle = t.border;
+    ctx.font = '12px monospace';
+    ctx.fillText('\u2500'.repeat(24), cx, by + 46);
+
+    const options = ['Resume', 'Save & Quit'];
+    options.forEach((label, i) => {
+      const isSel = i === selection;
+      const oy = by + 72 + i * 36;
+      if (isSel) {
+        ctx.fillStyle = t.accent + '22';
+        ctx.fillRect(bx + 20, oy - 14, boxW - 40, 26);
+        ctx.strokeStyle = t.accent;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(bx + 20, oy - 14, boxW - 40, 26);
+      }
+      ctx.font = `${isSel ? 'bold ' : ''}14px monospace`;
+      ctx.fillStyle = isSel ? t.prompt : t.uiDim;
+      ctx.fillText((isSel ? '▶ ' : '  ') + label, cx, oy);
+    });
+
+    ctx.font = '11px monospace';
+    ctx.fillStyle = t.uiDim;
+    ctx.fillText('↑ ↓ navigate   ENTER select   ESC resume', cx, by + boxH - 16);
 
     ctx.textAlign = 'left';
   }

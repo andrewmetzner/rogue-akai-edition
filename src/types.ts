@@ -81,6 +81,8 @@ export interface GameState {
   player: Entity;
   depth: number;
   biomeId: string;
+  classId: string;
+  fovRadius: number;
   turn: number;
   frozenTurns: number;   // player is frozen (blue, can't move)
   log: string[];
