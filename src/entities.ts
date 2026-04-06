@@ -7,15 +7,22 @@ function makeStats(hp: number, attack: number, defense: number): Stats {
   return { hp, maxHp: hp, attack, defense, xp: 0 };
 }
 
-export function createPlayer(x: number, y: number, cls: CharClass): Entity {
-  // Apply permanent gear bonuses (sword/shield) directly to base stats
-  let atkBonus = 0, defBonus = 0;
+export function createPlayer(
+  x: number,
+  y: number,
+  cls: CharClass,
+  hpOverride?: number,
+  atkOverride?: number,
+  defOverride?: number,
+): Entity {
+  // Apply permanent gear bonuses (sword) directly to base stats
+  let atkBonus = 0;
   for (const kind of cls.gearItems) {
-    if (kind === ItemKind.Sword)   atkBonus += 3;
-    if (kind === ItemKind.Shield)  defBonus += 2;
+    if (kind === ItemKind.Sword) atkBonus += 3;
   }
-  const atk = cls.attack + atkBonus;
-  const def = cls.defense + defBonus;
+  const hp  = hpOverride  ?? cls.hp;
+  const atk = atkOverride ?? (cls.attack + atkBonus);
+  const def = defOverride ?? cls.defense;
   return {
     id: nextId++,
     x, y,
@@ -23,7 +30,7 @@ export function createPlayer(x: number, y: number, cls: CharClass): Entity {
     glyph: '@',
     color: '#fff',
     name: cls.name,
-    stats: { hp: cls.hp, maxHp: cls.hp, attack: atk, defense: def, xp: 0 },
+    stats: { hp, maxHp: hp, attack: atk, defense: def, xp: 0 },
     alive: true,
   };
 }
@@ -31,17 +38,22 @@ export function createPlayer(x: number, y: number, cls: CharClass): Entity {
 /** Spawn consumable starting items at the player's starting position. */
 export function spawnStartItems(cls: CharClass, x: number, y: number): Entity[] {
   const itemDefs: Record<ItemKind, { glyph: string; color: string; name: string }> = {
-    [ItemKind.HealthPotion]:    { glyph: '!', color: '#f44', name: 'Health Potion' },
-    [ItemKind.ScrollLightning]: { glyph: '/', color: '#fa4', name: 'Lightning Scroll' },
-    [ItemKind.Sword]:           { glyph: ')', color: '#aaf', name: 'Sword' },
-    [ItemKind.Shield]:          { glyph: '[', color: '#4af', name: 'Shield' },
-    [ItemKind.MagicMap]:        { glyph: '?', color: '#fff', name: 'Magic Map' },
+    [ItemKind.HealthPotion]:    { glyph: '!', color: '#f44',  name: 'Health Potion' },
+    [ItemKind.ScrollLightning]: { glyph: '/', color: '#fa4',  name: 'Lightning Scroll' },
+    [ItemKind.Sword]:           { glyph: ')', color: '#aaf',  name: 'Sword' },
+    [ItemKind.Shield]:          { glyph: '[', color: '#4af',  name: 'Shield' },
+    [ItemKind.MagicMap]:        { glyph: '?', color: '#fff',  name: 'Magic Map' },
     [ItemKind.Wand]:            { glyph: '\\', color: '#fa4', name: 'Wand' },
-    [ItemKind.IceBomb]:         { glyph: '*', color: '#4af', name: 'Ice Bomb' },
-    [ItemKind.Lantern]:         { glyph: ':', color: '#ff8', name: 'Lantern' },
-    [ItemKind.Ring]:            { glyph: '=', color: '#faf', name: 'Ring' },
-    [ItemKind.Boots]:           { glyph: '"', color: '#aaa', name: 'Boots' },
-    [ItemKind.Amulet]:          { glyph: '"', color: '#ff8', name: 'Amulet' },
+    [ItemKind.IceBomb]:         { glyph: '*', color: '#4af',  name: 'Ice Bomb' },
+    [ItemKind.Lantern]:         { glyph: ':', color: '#ff8',  name: 'Lantern' },
+    [ItemKind.Ring]:            { glyph: '=', color: '#faf',  name: 'Ring' },
+    [ItemKind.Boots]:           { glyph: '"', color: '#aaa',  name: 'Boots' },
+    [ItemKind.Amulet]:          { glyph: '"', color: '#ff8',  name: 'Amulet' },
+    [ItemKind.Star]:            { glyph: '*', color: '#ff0',  name: 'Star' },
+    [ItemKind.FireFlower]:      { glyph: '\u2660', color: '#f80', name: 'Fire Flower' },
+    [ItemKind.SuperMushroom]:   { glyph: '\u25c6', color: '#f44', name: 'Super Mushroom' },
+    [ItemKind.Bomb]:            { glyph: '\u263b', color: '#888', name: 'Bomb' },
+    [ItemKind.CoinBag]:         { glyph: '\u00a2', color: '#ff8', name: 'Coin Bag' },
   };
   return cls.consumables.map(kind => {
     const def = itemDefs[kind];
@@ -67,7 +79,7 @@ interface MonsterTemplate {
   defense: number;
   minDepth: number;
   maxDepth?: number;
-  special?: 'freeze' | 'fireline';  // special attack behaviour (handled in game.ts)
+  special?: 'freeze' | 'fireline';
 }
 
 const MONSTERS: MonsterTemplate[] = [
@@ -79,30 +91,41 @@ const MONSTERS: MonsterTemplate[] = [
   { glyph: 'D', color: '#f60',    name: 'Dragon',       hp: 40, attack: 12, defense: 5, minDepth: 5, maxDepth: 12 },
 
   // ── Frozen Caverns (8–14) ─────────────────────────────────────────────
-  { glyph: 'w', color: '#aaddff', name: 'Frost Wolf',   hp: 18, attack: 8,  defense: 2, minDepth: 8,  maxDepth: 14 },
-  { glyph: 'Y', color: '#ddeeff', name: 'Yeti',         hp: 30, attack: 10, defense: 4, minDepth: 8,  maxDepth: 14 },
-  { glyph: 'E', color: '#88ccff', name: 'Ice Elemental',hp: 22, attack: 9,  defense: 3, minDepth: 10, maxDepth: 14 },
-  // Ice Dragon: freezes player on attack (turns blue, loses 1 turn)
-  { glyph: 'I', color: '#00eeff', name: 'Ice Dragon',   hp: 50, attack: 13, defense: 5, minDepth: 12, maxDepth: 14, special: 'freeze' },
+  { glyph: 'w', color: '#aaddff', name: 'Frost Wolf',    hp: 18, attack: 8,  defense: 2, minDepth: 8,  maxDepth: 14 },
+  { glyph: 'Y', color: '#ddeeff', name: 'Yeti',          hp: 30, attack: 10, defense: 4, minDepth: 8,  maxDepth: 14 },
+  { glyph: 'E', color: '#88ccff', name: 'Ice Elemental', hp: 22, attack: 9,  defense: 3, minDepth: 10, maxDepth: 14 },
+  { glyph: 'I', color: '#00eeff', name: 'Ice Dragon',    hp: 50, attack: 13, defense: 5, minDepth: 12, maxDepth: 14, special: 'freeze' },
 
   // ── Slime Pits (15–21) ────────────────────────────────────────────────
-  { glyph: 's', color: '#66cc33', name: 'Slime',        hp: 14, attack: 5,  defense: 0, minDepth: 15, maxDepth: 21 },
-  { glyph: 'j', color: '#88ff44', name: 'Jelly',        hp: 10, attack: 6,  defense: 1, minDepth: 15, maxDepth: 21 },
-  { glyph: 'S', color: '#44ff00', name: 'Slime Lord',   hp: 38, attack: 11, defense: 3, minDepth: 17, maxDepth: 21 },
+  { glyph: 's', color: '#66cc33', name: 'Slime',      hp: 14, attack: 5,  defense: 0, minDepth: 15, maxDepth: 21 },
+  { glyph: 'j', color: '#88ff44', name: 'Jelly',      hp: 10, attack: 6,  defense: 1, minDepth: 15, maxDepth: 21 },
+  { glyph: 'S', color: '#44ff00', name: 'Slime Lord',  hp: 38, attack: 11, defense: 3, minDepth: 17, maxDepth: 21 },
 
   // ── The Inferno (22–28) ───────────────────────────────────────────────
   { glyph: 'e', color: '#ff8833', name: 'Ember Spirit', hp: 20, attack: 10, defense: 2, minDepth: 22, maxDepth: 28 },
   { glyph: 'd', color: '#ff5500', name: 'Drake',        hp: 28, attack: 12, defense: 3, minDepth: 23, maxDepth: 28 },
   { glyph: 'F', color: '#ff2200', name: 'Fire Demon',   hp: 45, attack: 15, defense: 6, minDepth: 24, maxDepth: 28 },
-  // Fire Dragon: breathes a line of fire, scorching 3 tiles toward the player
   { glyph: 'Z', color: '#ff6600', name: 'Fire Dragon',  hp: 55, attack: 14, defense: 6, minDepth: 25, maxDepth: 28, special: 'fireline' },
 ];
 
 const ITEMS: { glyph: string; color: string; name: string; kind: ItemKind; minDepth: number }[] = [
-  { glyph: '!', color: '#f44', name: 'Health Potion',    kind: ItemKind.HealthPotion,    minDepth: 1  },
-  { glyph: '/', color: '#fa4', name: 'Lightning Scroll', kind: ItemKind.ScrollLightning, minDepth: 2  },
-  { glyph: ')', color: '#aaf', name: 'Sword',            kind: ItemKind.Sword,           minDepth: 1  },
-  { glyph: '[', color: '#4af', name: 'Shield',           kind: ItemKind.Shield,          minDepth: 1  },
+  // ── Always available ──────────────────────────────────────────────────
+  { glyph: '!',      color: '#f44',  name: 'Health Potion',    kind: ItemKind.HealthPotion,    minDepth: 1 },
+  { glyph: '\u25c6', color: '#f44',  name: 'Super Mushroom',   kind: ItemKind.SuperMushroom,   minDepth: 1 },
+  { glyph: '\u00a2', color: '#ff8',  name: 'Coin Bag',         kind: ItemKind.CoinBag,         minDepth: 1 },
+  { glyph: ')',       color: '#aaf',  name: 'Sword',            kind: ItemKind.Sword,           minDepth: 1 },
+  { glyph: '[',       color: '#4af',  name: 'Shield',           kind: ItemKind.Shield,          minDepth: 1 },
+
+  // ── Mid dungeon ───────────────────────────────────────────────────────
+  { glyph: '/',       color: '#fa4',  name: 'Lightning Scroll', kind: ItemKind.ScrollLightning, minDepth: 2 },
+  { glyph: '\u2660',  color: '#f80',  name: 'Fire Flower',      kind: ItemKind.FireFlower,      minDepth: 3 },
+  { glyph: '\u263b',  color: '#888',  name: 'Bomb',             kind: ItemKind.Bomb,            minDepth: 4 },
+  { glyph: ':',       color: '#ff8',  name: 'Lantern',          kind: ItemKind.Lantern,         minDepth: 5 },
+  { glyph: '*',       color: '#ff0',  name: 'Star',             kind: ItemKind.Star,            minDepth: 5 },
+  { glyph: '?',       color: '#fff',  name: 'Magic Map',        kind: ItemKind.MagicMap,        minDepth: 6 },
+
+  // ── Deep dungeon ──────────────────────────────────────────────────────
+  { glyph: '*',       color: '#4af',  name: 'Ice Bomb',         kind: ItemKind.IceBomb,         minDepth: 8 },
 ];
 
 function rng(min: number, max: number): number {
@@ -119,7 +142,6 @@ function randomFloorInRoom(
     const x = rng(room.x + 1, room.x + room.w - 2);
     const y = rng(room.y + 1, room.y + room.h - 2);
     const key = `${x},${y}`;
-    // Spawn on floor or ice/slime — not lava
     const t = map[y * mapWidth + x];
     if ((t === Tile.Floor || t === Tile.IceFloor || t === Tile.SlimePool) && !occupied.has(key)) {
       occupied.add(key);
@@ -135,7 +157,8 @@ export function spawnEntities(
   mapWidth: number,
   depth: number,
   playerX: number,
-  playerY: number
+  playerY: number,
+  bonusItemChance = 0,
 ): Entity[] {
   const entities: Entity[] = [];
   const occupied = new Set<string>();
@@ -149,7 +172,7 @@ export function spawnEntities(
   for (let i = 1; i < rooms.length; i++) {
     const room = rooms[i];
     const monsterCount = rng(0, 2 + Math.floor(depth / 3));
-    const itemCount = rng(0, 1);
+    const itemCount = rng(0, 1) + (Math.random() < bonusItemChance ? 1 : 0);
 
     for (let m = 0; m < monsterCount; m++) {
       const pos = randomFloorInRoom(room, map, mapWidth, occupied);

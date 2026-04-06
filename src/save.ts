@@ -1,11 +1,8 @@
-// Roguelike save system — one save slot, stored in localStorage.
-// Permadeath: dying deletes the save. Loading resumes exactly where you left off.
-
 import { type GameState } from './types';
 import { playerLevel } from './combat';
 
 const SAVE_KEY = 'rogue-akai-edition-save';
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3;
 
 export interface SaveMeta {
   depth: number;
@@ -22,7 +19,6 @@ interface SaveData {
   timestamp: number;
   meta: SaveMeta;
   themeIndex: number;
-  // GameState fields (Uint8Arrays stored as plain arrays)
   map: number[];
   explored: number[];
   mapWidth: number;
@@ -34,7 +30,15 @@ interface SaveData {
   classId: string;
   fovRadius: number;
   turn: number;
+  frozenTurns: number;
   log: string[];
+  mode: string;
+  gold: number;
+  advancement: string | null;
+  weaponTier: number;
+  invincibleUntilTurn: number;
+  lanternExpiresAt: number;
+  monsterBook: object;
 }
 
 export function saveGame(state: GameState, biomeId: string, themeIndex: number): void {
@@ -62,12 +66,20 @@ export function saveGame(state: GameState, biomeId: string, themeIndex: number):
     classId:   state.classId,
     fovRadius: state.fovRadius,
     turn:      state.turn,
+    frozenTurns: state.frozenTurns,
     log:       state.log,
+    mode:      state.mode,
+    gold:      state.gold,
+    advancement: state.advancement,
+    weaponTier: state.weaponTier,
+    invincibleUntilTurn: state.invincibleUntilTurn,
+    lanternExpiresAt: state.lanternExpiresAt,
+    monsterBook: state.monsterBook,
   };
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch {
-    // localStorage full or unavailable — silently skip
+    // localStorage full or unavailable
   }
 }
 
@@ -118,8 +130,16 @@ export function loadGame(): LoadedGame | null {
       classId:     data.classId ?? 'warrior',
       fovRadius:   data.fovRadius ?? 9,
       turn:        data.turn,
-      frozenTurns: 0,
+      frozenTurns: data.frozenTurns ?? 0,
       log:         data.log,
+      mode:        (data.mode as 'classic' | 'roguelite') ?? 'classic',
+      gold:        data.gold ?? 0,
+      advancement: data.advancement ?? null,
+      weaponTier:  data.weaponTier ?? 0,
+      invincibleUntilTurn: data.invincibleUntilTurn ?? 0,
+      lanternExpiresAt:    data.lanternExpiresAt ?? 0,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      monsterBook: (data.monsterBook as any) ?? {},
     };
 
     return { state, biomeId: data.biomeId, themeIndex: data.themeIndex };

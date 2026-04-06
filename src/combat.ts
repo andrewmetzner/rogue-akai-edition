@@ -1,4 +1,4 @@
-import { type Entity, EntityType, ItemKind } from './types';
+import { type Entity, EntityType, ItemKind, type GameState } from './types';
 
 function rng(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -35,17 +35,15 @@ function xpForLevel(level: number): number {
   return level * level * 50;
 }
 
-function checkLevelUp(player: Entity): string | null {
+function checkLevelUp(player: Entity): void {
   const s = player.stats!;
   const level = playerLevel(s.xp);
-  const prevLevel = playerLevel(s.xp - 1); // rough check
+  const prevLevel = playerLevel(s.xp - 1);
   if (level > prevLevel) {
     s.maxHp += 5;
     s.hp = Math.min(s.hp + 5, s.maxHp);
     s.attack += 1;
-    return `You reached level ${level}!`;
   }
-  return null;
 }
 
 export function playerLevel(xp: number): number {
@@ -54,11 +52,13 @@ export function playerLevel(xp: number): number {
   return level - 1;
 }
 
-export function useItem(player: Entity, kind: ItemKind, entities: Entity[]): string {
+export function useItem(player: Entity, kind: ItemKind, state: GameState): string {
   const s = player.stats!;
+  const { entities, visible, mapWidth, advancement } = state;
+
   switch (kind) {
 
-    // ── Implemented items ──────────────────────────────────────────────────
+    // ── Core items ────────────────────────────────────────────────────────
 
     case ItemKind.HealthPotion: {
       const hpBefore = s.hp;
@@ -71,17 +71,28 @@ export function useItem(player: Entity, kind: ItemKind, entities: Entity[]): str
     }
 
     case ItemKind.ScrollLightning: {
-      const target = entities
+      const targets = entities
         .filter(e => e.type === EntityType.Monster && e.alive)
-        .sort((a, b) => dist(player, a) - dist(player, b))[0];
-      if (!target) return 'The scroll crackles but finds no target.';
-      const dmg = rng(15, 25);
-      target.stats!.hp -= dmg;
-      if (target.stats!.hp <= 0) {
-        target.alive = false;
-        return `Lightning strikes the ${target.name} for ${dmg} damage — it dies!`;
+        .sort((a, b) => dist(player, a) - dist(player, b));
+      if (targets.length === 0) return 'The scroll crackles but finds no target.';
+
+      const mult = advancement === 'archmage' ? 1.5 : 1;
+      const msgs: string[] = [];
+
+      // Bowmaster: hit 2 targets; everyone else: 1
+      const hitCount = advancement === 'bowmaster' ? Math.min(2, targets.length) : 1;
+      for (let i = 0; i < hitCount; i++) {
+        const target = targets[i];
+        const dmg = Math.round(rng(15, 25) * mult);
+        target.stats!.hp -= dmg;
+        if (target.stats!.hp <= 0) {
+          target.alive = false;
+          msgs.push(`Lightning strikes the ${target.name} for ${dmg} damage — it dies!`);
+        } else {
+          msgs.push(`Lightning strikes the ${target.name} for ${dmg} damage!`);
+        }
       }
-      return `Lightning strikes the ${target.name} for ${dmg} damage!`;
+      return msgs.join(' ');
     }
 
     case ItemKind.Sword: {
@@ -94,20 +105,95 @@ export function useItem(player: Entity, kind: ItemKind, entities: Entity[]): str
       return 'You equip the shield. (+2 defense)';
     }
 
-    // ── Planned items (hooks — not yet spawned) ────────────────────────────
-    // To unlock: add to ITEMS array in entities.ts so they can spawn,
-    // then implement the effect here.
+    // ── Mario-inspired items ──────────────────────────────────────────────
 
-    case ItemKind.MagicMap:
-      return '(not yet implemented)';
+    case ItemKind.SuperMushroom: {
+      const hpBefore = s.hp;
+      const heal = rng(25, 40);
+      s.hp = Math.min(s.hp + heal, s.maxHp);
+      const actual = s.hp - hpBefore;
+      return actual === 0
+        ? 'You eat the mushroom but are already at full health.'
+        : `You eat the mushroom and recover ${actual} HP. (${hpBefore} → ${s.hp}/${s.maxHp})`;
+    }
+
+    case ItemKind.Star: {
+      state.invincibleUntilTurn = state.turn + 3;
+      return 'A golden star surrounds you! [INVINCIBLE for 3 turns]';
+    }
+
+    case ItemKind.FireFlower: {
+      const visMonsters = entities.filter(e =>
+        e.type === EntityType.Monster && e.alive && visible[e.y * mapWidth + e.x]
+      );
+      if (visMonsters.length === 0) return 'The fire flower blooms, but no targets are in sight.';
+      let kills = 0;
+      for (const m of visMonsters) {
+        const dmg = rng(8, 14);
+        m.stats!.hp -= dmg;
+        if (m.stats!.hp <= 0) { m.alive = false; kills++; }
+      }
+      const hit = visMonsters.length;
+      return kills > 0
+        ? `Flames engulf ${hit} enemies! (${kills} killed)`
+        : `Flames scorch ${hit} enemies!`;
+    }
+
+    case ItemKind.Bomb: {
+      const adjacent = entities.filter(e =>
+        e.type === EntityType.Monster && e.alive &&
+        Math.abs(e.x - player.x) <= 1 && Math.abs(e.y - player.y) <= 1
+      );
+      if (adjacent.length === 0) return 'BOOM! No adjacent enemies caught in the blast.';
+      let kills = 0;
+      for (const m of adjacent) {
+        const dmg = rng(10, 18);
+        m.stats!.hp -= dmg;
+        if (m.stats!.hp <= 0) { m.alive = false; kills++; }
+      }
+      return kills > 0
+        ? `BOOM! Blast hits ${adjacent.length} enemies! (${kills} killed)`
+        : `BOOM! Blast hits ${adjacent.length} enemies!`;
+    }
+
+    case ItemKind.CoinBag: {
+      if (state.mode === 'roguelite') {
+        const gold = rng(20, 40);
+        state.gold += gold;
+        return `You grab the coin bag! (+${gold}g)`;
+      } else {
+        const xp = 15;
+        s.xp += xp;
+        checkLevelUp(player);
+        return `You grab the coin bag! (+${xp} XP)`;
+      }
+    }
+
+    // ── Exploration items ─────────────────────────────────────────────────
+
+    case ItemKind.MagicMap: {
+      state.explored.fill(1);
+      return 'The map glows — every corner of this floor is revealed!';
+    }
+
+    case ItemKind.IceBomb: {
+      const visibleMonsters = entities.filter(e =>
+        e.type === EntityType.Monster && e.alive && visible[e.y * mapWidth + e.x]
+      );
+      if (visibleMonsters.length === 0) return 'The ice bomb detonates, but no targets are in sight.';
+      for (const m of visibleMonsters) m.frozenTurns = 2;
+      return `The ice bomb freezes ${visibleMonsters.length} enemies for 2 turns!`;
+    }
+
+    case ItemKind.Lantern: {
+      state.lanternExpiresAt = state.turn + 15;
+      state.fovRadius += 5;
+      return 'The lantern blazes! Your vision expands for 15 turns.';
+    }
+
+    // ── Planned (not yet spawning) ────────────────────────────────────────
 
     case ItemKind.Wand:
-      return '(not yet implemented)';
-
-    case ItemKind.IceBomb:
-      return '(not yet implemented)';
-
-    case ItemKind.Lantern:
       return '(not yet implemented)';
 
     case ItemKind.Ring:
@@ -131,10 +217,8 @@ export function monsterAI(monster: Entity, player: Entity, canMove: (x: number, 
   const absDx = Math.abs(dx);
   const absDy = Math.abs(dy);
 
-  // Adjacent — attack (handled by caller)
   if (absDx <= 1 && absDy <= 1) return { dx: Math.sign(dx), dy: Math.sign(dy) };
 
-  // Step toward player
   if (absDx > absDy) {
     const stepX = Math.sign(dx);
     if (canMove(monster.x + stepX, monster.y)) return { dx: stepX, dy: 0 };

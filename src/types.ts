@@ -36,17 +36,24 @@ export const ItemKind = {
   ScrollLightning: 3,
 
   // ── Planned (not yet spawned or implemented) ──────────────────────────────
-  // Add to ITEMS array in entities.ts + case in useItem() in combat.ts
-  // when ready to unlock.
-  MagicMap:    10,  // reveals entire current floor
-  Wand:        11,  // ranged attack, limited charges
-  IceBomb:     12,  // freeze all visible monsters 1 turn
-  Lantern:     13,  // temporarily increases FOV radius
-  Ring:        14,  // passive stat bonus (random on pickup)
-  Boots:       15,  // +1 move range or diagonal bonuses
-  Amulet:      16,  // floor-end boss item / special effect
+  MagicMap:      10,  // reveals entire current floor
+  Wand:          11,  // ranged attack, limited charges
+  IceBomb:       12,  // freeze all visible monsters
+  Lantern:       13,  // temporarily increases FOV radius
+  Ring:          14,  // passive stat bonus (random on pickup)
+  Boots:         15,  // +1 move range or diagonal bonuses
+  Amulet:        16,  // floor-end boss item / special effect
+
+  // ── Mario-inspired temp buffs ─────────────────────────────────────────────
+  Star:          20,  // 3-turn invincibility
+  FireFlower:    21,  // damages all visible monsters
+  SuperMushroom: 22,  // big heal (25–40 HP)
+  Bomb:          23,  // damages all adjacent monsters
+  CoinBag:       24,  // +gold (roguelite) or +XP (classic)
 } as const;
 export type ItemKind = (typeof ItemKind)[keyof typeof ItemKind];
+
+export type GameMode = 'classic' | 'roguelite';
 
 export interface Stats {
   hp: number;
@@ -68,7 +75,14 @@ export interface Entity {
   itemKind?: ItemKind;
   level?: number;
   special?: 'freeze' | 'fireline';
+  frozenTurns?: number;   // for IceBomb effect on monsters
   alive: boolean;
+}
+
+export interface MonsterBookEntry {
+  name: string;
+  encountered: number;
+  killed: number;
 }
 
 export interface GameState {
@@ -84,6 +98,19 @@ export interface GameState {
   classId: string;
   fovRadius: number;
   turn: number;
-  frozenTurns: number;   // player is frozen (blue, can't move)
+  frozenTurns: number;        // player is frozen (blue, can't move)
   log: string[];
+
+  // ── Mode & progression ────────────────────────────────────────────────────
+  mode: GameMode;
+  gold: number;               // run gold (roguelite only; 0 in classic)
+  advancement: string | null; // e.g. 'dragon-knight'; null = not yet advanced
+  weaponTier: number;         // 0–3 (upgrade room gives +1 each time)
+
+  // ── Timed effects ─────────────────────────────────────────────────────────
+  invincibleUntilTurn: number; // Star item: 0 = inactive
+  lanternExpiresAt: number;    // Lantern item: 0 = inactive
+
+  // ── Clan Primer ───────────────────────────────────────────────────────────
+  monsterBook: Record<string, MonsterBookEntry>;
 }
