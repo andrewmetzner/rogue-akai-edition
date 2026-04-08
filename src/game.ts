@@ -7,7 +7,7 @@ import { Renderer } from './renderer';
 import { THEMES } from './themes';
 import { getBiome } from './biomes';
 import { audio } from './audio';
-import { saveGame, deleteSave, loadSaveMeta, loadGame, type SaveMeta } from './save';
+import { deleteSave } from './save';
 import { loadDiscoveries, discoverItem, discoverHazard } from './discoveries';
 import { ItemKind } from './types';
 import {
@@ -20,7 +20,6 @@ const MAP_H = 45;
 const BASE_FOV = 9;
 const MAX_DEPTH = 28;
 const MAX_LOG = 6;
-const SAVE_INTERVAL = 5;
 
 type Screen = 'menu' | 'playing' | 'paused' | 'lobby' | 'over' | 'clanPrimer';
 
@@ -34,7 +33,6 @@ export class Game {
   private screen: Screen = 'menu';
   private animId = 0;
 
-  private saveMeta: SaveMeta | null = null;
   private menuSelection = 0;
 
   private mode: 'classic' | 'roguelike' = 'classic';
@@ -58,7 +56,6 @@ export class Game {
 
   private showMenu(): void {
     this.screen = 'menu';
-    this.saveMeta = loadSaveMeta();
     this.menuSelection = 0;
     document.getElementById('hud-left')!.textContent = '';
     document.getElementById('hud-right')!.textContent = '';
@@ -96,27 +93,6 @@ export class Game {
     this.renderer.applyBodyBg(biome.palette.bg);
     audio.start();
     this.newGame();
-  }
-
-  private loadSavedGame(): void {
-    const loaded = loadGame();
-    if (!loaded) { this.showMenu(); return; }
-
-    const biome = getBiome(loaded.state.depth);
-    this.state = {
-      ...loaded.state,
-      visible: new Uint8Array(loaded.state.mapWidth * loaded.state.mapHeight),
-    };
-    this.mode = this.state.mode;
-    this.renderer.themeIndex = loaded.themeIndex;
-    this.renderer.applyBodyBg(biome.palette.bg);
-    this.screen = 'playing';
-    this.won = false;
-    this.seenEntityIds = new Set();
-    this.updateFOV();
-    this.render();
-    this.renderLog();
-    this.addLog(`Welcome back. Depth ${this.state.depth} — ${biome.name}.`);
   }
 
   private openPause(): void {
@@ -190,8 +166,6 @@ export class Game {
     this.updateFOV();
     this.render();
     this.renderLog();
-    // Write an initial save so Classic always has a slot from the moment the run begins
-    if (this.mode === 'classic') this.writeSave();
   }
 
   private descend(): void {
@@ -246,16 +220,7 @@ export class Game {
     this.addLog(`Depth ${depth}: ${biome.name}. ${biome.flavorText}`);
     this.updateFOV();
     this.renderer.applyBodyBg(biome.palette.bg);
-    if (this.state.mode === 'classic') this.writeSave();
     this.render();
-  }
-
-  // ── Save ──────────────────────────────────────────────────────────────────
-
-  private writeSave(): void {
-    if (this.state.mode !== 'classic') return;
-    saveGame(this.state, this.state.biomeId, this.renderer.themeIndex);
-    try { audio.save(); } catch { /* audio may not be ready */ }
   }
 
   // ── Core systems ──────────────────────────────────────────────────────────
@@ -314,7 +279,7 @@ export class Game {
   private render(): void {
     switch (this.screen) {
       case 'menu':
-        this.renderer.renderStartMenu(this.saveMeta, this.menuSelection);
+        this.renderer.renderStartMenu(this.menuSelection);
         break;
       case 'lobby':
         this.renderer.renderLobby(loadMeta(), this.lobbySelection);
@@ -475,7 +440,6 @@ export class Game {
     item.alive = false;
     this.addLog(`You pick up the ${item.name}. ${msg}`);
     this.endTurn();
-    this.writeSave();
   }
 
   private tryDescend(): void {
@@ -500,7 +464,6 @@ export class Game {
 
     this.runMonsters();
     if (this.checkDeath()) return;
-    if (this.state.mode === 'classic' && this.state.turn % SAVE_INTERVAL === 0) this.writeSave();
     this.updateFOV();
     this.checkNewSightings();
     this.render();
@@ -626,11 +589,7 @@ export class Game {
             if (this.menuSelection === 0) {
               // CLASSIC
               this.mode = 'classic';
-              if (this.saveMeta) {
-                this.loadSavedGame();
-              } else {
-                this.startGame();
-              }
+              this.startGame();
             } else {
               // ROGUELIKE
               this.mode = 'roguelike';
@@ -725,7 +684,6 @@ export class Game {
             } else if (this.pauseSelection === 1) {
               this.openClanPrimer();
             } else {
-              if (this.state.mode === 'classic') this.writeSave();
               this.showMenu();
             }
           }

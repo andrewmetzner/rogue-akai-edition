@@ -3,7 +3,6 @@ import { type Discoveries } from './discoveries';
 import { playerLevel } from './combat';
 import { THEMES, type Theme } from './themes';
 import { getBiome } from './biomes';
-import { type SaveMeta } from './save';
 import {
   type MetaState,
   META_UPGRADE_LABELS,
@@ -204,7 +203,7 @@ export class Renderer {
 
   // ── Start Menu ────────────────────────────────────────────────────────────
 
-  renderStartMenu(saveMeta: SaveMeta | null, menuSelection: number): void {
+  renderStartMenu(menuSelection: number): void {
     const t   = this.theme;
     const ctx = this.ctx;
     const W   = this.canvas.width;
@@ -249,15 +248,12 @@ export class Renderer {
         label: 'CLASSIC',
         color: '#4af',
         lines: [
-          'Permadeath. One save slot.',
-          'Auto-saves on stairs.',
-          'Die and it\'s gone.',
+          'No saves. Pure permadeath.',
+          'Start fresh every time.',
+          'Die and it\'s over.',
           '',
           'Pure roguelike.',
         ],
-        saveInfo: saveMeta
-          ? `Save: Depth ${saveMeta.depth} · ${saveMeta.biomeName}`
-          : 'No save — start fresh',
       },
       {
         label: 'ROGUELIKE',
@@ -269,7 +265,6 @@ export class Renderer {
           '',
           'Progress survives death.',
         ],
-        saveInfo: '',
       },
     ];
 
@@ -294,11 +289,6 @@ export class Renderer {
         ctx.fillText(line, cx2 + cardW / 2, cardY + 50 + li * 18);
       });
 
-      if (m.saveInfo) {
-        ctx.font = '11px monospace';
-        ctx.fillStyle = isSel ? t.accent : t.uiDim;
-        ctx.fillText(m.saveInfo, cx2 + cardW / 2, cardY + cardH - 18);
-      }
     });
 
     // Blinking prompt
