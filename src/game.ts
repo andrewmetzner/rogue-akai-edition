@@ -20,7 +20,7 @@ const MAP_H = 45;
 const BASE_FOV = 9;
 const MAX_DEPTH = 28;
 const MAX_LOG = 6;
-const SAVE_INTERVAL = 10;
+const SAVE_INTERVAL = 5;
 
 type Screen = 'menu' | 'playing' | 'paused' | 'lobby' | 'over' | 'clanPrimer';
 
@@ -255,7 +255,7 @@ export class Game {
   private writeSave(): void {
     if (this.state.mode !== 'classic') return;
     saveGame(this.state, this.state.biomeId, this.renderer.themeIndex);
-    audio.save();
+    try { audio.save(); } catch { /* audio may not be ready */ }
   }
 
   // ── Core systems ──────────────────────────────────────────────────────────
@@ -475,6 +475,7 @@ export class Game {
     item.alive = false;
     this.addLog(`You pick up the ${item.name}. ${msg}`);
     this.endTurn();
+    this.writeSave();
   }
 
   private tryDescend(): void {
