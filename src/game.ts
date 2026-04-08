@@ -7,7 +7,7 @@ import { Renderer } from './renderer';
 import { THEMES } from './themes';
 import { getBiome } from './biomes';
 import { audio } from './audio';
-import { deleteSave } from './save';
+import { saveGame, loadGame, deleteSave, hasSave, loadSaveMeta, type SaveMeta } from './save';
 import { loadDiscoveries, discoverItem, discoverHazard } from './discoveries';
 import { ItemKind } from './types';
 import {
@@ -20,6 +20,7 @@ const MAP_H = 45;
 const BASE_FOV = 9;
 const MAX_DEPTH = 28;
 const MAX_LOG = 6;
+const SAVE_INTERVAL = 5; // roguelike auto-save every N turns
 
 type Screen = 'menu' | 'playing' | 'paused' | 'lobby' | 'over' | 'clanPrimer';
 
@@ -45,6 +46,7 @@ export class Game {
 
   private seenEntityIds = new Set<number>();
   private won = false;
+  private roguelikeSaveMeta: SaveMeta | null = null;
 
   constructor() {
     this.renderer = new Renderer('canvas');
@@ -57,10 +59,37 @@ export class Game {
   private showMenu(): void {
     this.screen = 'menu';
     this.menuSelection = 0;
+    this.roguelikeSaveMeta = loadSaveMeta();
     document.getElementById('hud-left')!.textContent = '';
     document.getElementById('hud-right')!.textContent = '';
     document.getElementById('log')!.innerHTML = '';
     this.startAnimLoop();
+  }
+
+  private writeSave(): void {
+    // Only roguelike mode saves mid-run state
+    if (this.state?.mode !== 'roguelike') return;
+    saveGame(this.state, this.state.biomeId, this.renderer.themeIndex);
+  }
+
+  private loadSavedGame(): void {
+    const loaded = loadGame();
+    if (!loaded) { this.showLobby(); return; }
+    this.stopAnimLoop();
+    this.screen = 'playing';
+    this.state = {
+      ...loaded.state,
+      visible: new Uint8Array(loaded.state.mapWidth * loaded.state.mapHeight),
+    };
+    this.mode = 'roguelike';
+    this.renderer.themeIndex = loaded.themeIndex;
+    this.renderer.applyBodyBg(this.state.biomeId);
+    audio.start();
+    this.seenEntityIds = new Set();
+    this.won = false;
+    this.updateFOV();
+    this.render();
+    this.renderLog();
   }
 
   private showLobby(): void {
@@ -220,6 +249,7 @@ export class Game {
     this.addLog(`Depth ${depth}: ${biome.name}. ${biome.flavorText}`);
     this.updateFOV();
     this.renderer.applyBodyBg(biome.palette.bg);
+    if (this.state.mode === 'roguelike') this.writeSave();
     this.render();
   }
 
@@ -279,7 +309,7 @@ export class Game {
   private render(): void {
     switch (this.screen) {
       case 'menu':
-        this.renderer.renderStartMenu(this.menuSelection);
+        this.renderer.renderStartMenu(this.menuSelection, this.roguelikeSaveMeta);
         break;
       case 'lobby':
         this.renderer.renderLobby(loadMeta(), this.lobbySelection);
@@ -440,6 +470,7 @@ export class Game {
     item.alive = false;
     this.addLog(`You pick up the ${item.name}. ${msg}`);
     this.endTurn();
+    if (this.state.mode === 'roguelike') this.writeSave();
   }
 
   private tryDescend(): void {
@@ -464,6 +495,7 @@ export class Game {
 
     this.runMonsters();
     if (this.checkDeath()) return;
+    if (this.state.mode === 'roguelike' && this.state.turn % SAVE_INTERVAL === 0) this.writeSave();
     this.updateFOV();
     this.checkNewSightings();
     this.render();
@@ -591,9 +623,13 @@ export class Game {
               this.mode = 'classic';
               this.startGame();
             } else {
-              // ROGUELIKE
+              // ROGUELIKE — resume run if save exists, else go to lobby
               this.mode = 'roguelike';
-              this.showLobby();
+              if (hasSave()) {
+                this.loadSavedGame();
+              } else {
+                this.showLobby();
+              }
             }
           }
           e.preventDefault();
@@ -684,6 +720,7 @@ export class Game {
             } else if (this.pauseSelection === 1) {
               this.openClanPrimer();
             } else {
+              if (this.state.mode === 'roguelike') this.writeSave();
               this.showMenu();
             }
           }

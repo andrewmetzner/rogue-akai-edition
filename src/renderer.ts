@@ -3,6 +3,7 @@ import { type Discoveries } from './discoveries';
 import { playerLevel } from './combat';
 import { THEMES, type Theme } from './themes';
 import { getBiome } from './biomes';
+import { type SaveMeta } from './save';
 import {
   type MetaState,
   META_UPGRADE_LABELS,
@@ -203,7 +204,7 @@ export class Renderer {
 
   // ── Start Menu ────────────────────────────────────────────────────────────
 
-  renderStartMenu(menuSelection: number): void {
+  renderStartMenu(menuSelection: number, roguelikeSave: SaveMeta | null = null): void {
     const t   = this.theme;
     const ctx = this.ctx;
     const W   = this.canvas.width;
@@ -252,8 +253,9 @@ export class Renderer {
           'Start fresh every time.',
           'Die and it\'s over.',
           '',
-          'Pure roguelike.',
+          'No meta-progression.',
         ],
+        saveInfo: null as string | null,
       },
       {
         label: 'ROGUELIKE',
@@ -263,8 +265,11 @@ export class Renderer {
           'Meta upgrades persist.',
           'Unlock skins in The Village.',
           '',
-          'Progress survives death.',
+          'Run saves on descend.',
         ],
+        saveInfo: roguelikeSave
+          ? `Continue: Depth ${roguelikeSave.depth} · ${roguelikeSave.biomeName}`
+          : 'No save — start in The Village',
       },
     ];
 
@@ -289,6 +294,11 @@ export class Renderer {
         ctx.fillText(line, cx2 + cardW / 2, cardY + 50 + li * 18);
       });
 
+      if (m.saveInfo) {
+        ctx.font = '11px monospace';
+        ctx.fillStyle = isSel ? t.accent : t.uiDim;
+        ctx.fillText(m.saveInfo, cx2 + cardW / 2, cardY + cardH - 18);
+      }
     });
 
     // Blinking prompt
@@ -497,7 +507,7 @@ export class Renderer {
     ctx.font = '12px monospace';
     ctx.fillText('\u2500'.repeat(24), cx, by + 46);
 
-    const quitLabel = mode === 'roguelike' ? 'Return to Menu' : 'Save & Quit';
+    const quitLabel = mode === 'roguelike' ? 'Save & Quit' : 'Quit to Menu';
     const options   = ['Resume', 'Clan Primer', quitLabel];
     options.forEach((label, i) => {
       const isSel = i === selection;
