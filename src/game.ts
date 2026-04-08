@@ -190,6 +190,8 @@ export class Game {
     this.updateFOV();
     this.render();
     this.renderLog();
+    // Write an initial save so Classic always has a slot from the moment the run begins
+    if (this.mode === 'classic') this.writeSave();
   }
 
   private descend(): void {
