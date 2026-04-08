@@ -1,13 +1,14 @@
-import { type GameState, type MonsterBookEntry, Tile, EntityType, ItemKind } from './types';
+import { type GameState, type MonsterBookEntry, Tile, EntityType } from './types';
+import { type Discoveries } from './discoveries';
 import { playerLevel } from './combat';
 import { THEMES, type Theme } from './themes';
 import { getBiome } from './biomes';
 import { type SaveMeta } from './save';
-import { CLASSES, getClass } from './classes';
 import {
   type MetaState,
   META_UPGRADE_LABELS,
   nextUpgradeCost,
+  SKIN_COSTS,
 } from './meta';
 
 const CELL_W = 14;
@@ -148,13 +149,10 @@ export class Renderer {
     const lanternTag = state.lanternExpiresAt > state.turn
       ? ` <span style="color:#ff8">[LANTERN ${state.lanternExpiresAt - state.turn}]</span>` : '';
 
-    const weaponName = getClass(state.classId).weaponNames[state.weaponTier];
-    const goldOrXp   = state.mode === 'roguelite'
+    const weaponName = state.equippedWeapon?.name ?? 'Unarmed';
+    const goldOrXp   = state.mode === 'roguelike'
       ? `  <span style="color:#ff8">${state.gold}g</span>`
       : `  <span style="color:${t.ui}">XP ${s.xp}</span>`;
-
-    const advTag = state.advancement
-      ? `  <span style="color:${t.uiDim}">[${state.advancement}]</span>` : '';
 
     const left  = document.getElementById('hud-left')!;
     const right = document.getElementById('hud-right')!;
@@ -163,7 +161,7 @@ export class Renderer {
       `  <span style="color:${t.ui}">ATK ${s.attack}  DEF ${s.defense}</span>` +
       frozenTag + starTag + lanternTag;
     right.innerHTML =
-      `<span style="color:${t.uiDim}">${weaponName}</span>` + advTag + goldOrXp +
+      `<span style="color:${t.uiDim}">${weaponName}</span>` + goldOrXp +
       `  <span style="color:${t.ui}">LVL ${level}</span>` +
       `  <span style="color:${biome.palette.stairsVis}">${biome.name} B${state.depth}</span>` +
       `  <span style="color:${t.ui}">T${state.turn}</span>`;
@@ -191,7 +189,7 @@ export class Renderer {
         `Depth ${state.depth}  •  Turn ${state.turn}  •  Level ${playerLevel(s.xp)}`,
         cx, cy - 8,
       );
-      if (state.mode === 'roguelite') {
+      if (state.mode === 'roguelike') {
         ctx.font = '13px monospace';
         ctx.fillStyle = '#ff8';
         ctx.fillText(`Gold earned this run: ${state.gold}g`, cx, cy + 14);
@@ -204,113 +202,9 @@ export class Renderer {
     ctx.textAlign = 'left';
   }
 
+  // ── Start Menu ────────────────────────────────────────────────────────────
+
   renderStartMenu(saveMeta: SaveMeta | null, menuSelection: number): void {
-    const t   = this.theme;
-    const ctx = this.ctx;
-    const W   = this.canvas.width;
-    const cx  = W / 2;
-
-    ctx.fillStyle = t.bg;
-    ctx.fillRect(0, 0, W, this.canvas.height);
-    ctx.textAlign = 'center';
-
-    // Title
-    ctx.font = 'bold 36px monospace';
-    ctx.fillStyle = t.accent;
-    ctx.fillText('ROGUE - Akai Edition', cx, 46);
-
-    ctx.font = '11px monospace';
-    ctx.fillStyle = t.uiDim;
-    ctx.fillText('(UnluckyLisp production)', cx, 70);
-
-    const border = '\u2500'.repeat(52);
-    ctx.fillStyle = t.border;
-    ctx.font = '13px monospace';
-    ctx.fillText(border, cx, 94);
-
-    // Controls
-    const controls: [string, string][] = [
-      ['Move',              'WASD / Arrow Keys / Numpad'],
-      ['Diagonal Move',     'Y U B N'],
-      ['Wait a turn',       '. or Numpad 5'],
-      ['Pick up item',      'G'],
-      ['Descend stairs',    '> (stand on > first)'],
-      ['Pause / Menu',      'ESC'],
-      ['Restart',           'R  (after death)'],
-    ];
-
-    ctx.textAlign = 'left';
-    const leftX  = cx - 205;
-    const rightX = cx - 5;
-    let y = 118;
-
-    ctx.fillStyle = t.uiDim;
-    ctx.font = 'bold 12px monospace';
-    ctx.fillText('Action', leftX, y);
-    ctx.fillText('Key', rightX, y);
-    y += 18;
-
-    ctx.font = '12px monospace';
-    for (const [action, key] of controls) {
-      ctx.fillStyle = t.ui;
-      ctx.fillText(action, leftX, y);
-      ctx.fillStyle = t.accent;
-      ctx.fillText(key, rightX, y);
-      y += 17;
-    }
-
-    y += 6;
-    ctx.textAlign = 'center';
-    ctx.fillStyle = t.border;
-    ctx.fillText(border, cx, y);
-
-    // Legend
-    y += 18;
-    ctx.fillStyle = t.uiDim;
-    ctx.font = '11px monospace';
-    ctx.fillText('@ you   monsters: r g o T D w Y E I s j S e d F Z   items: ! / ) [', cx, y);
-    y += 14;
-    ctx.fillText('hazards: \u00b0 ice (slide)   % slime (-1HP/turn)   ~ lava (-3HP/turn)', cx, y);
-
-    // Theme selector
-    y += 22;
-    ctx.fillStyle = t.uiDim;
-    ctx.font = 'bold 11px monospace';
-    ctx.fillText('STYLE  (← →)', cx, y);
-    y += 16;
-    this.drawThemeSelector(ctx, cx, y);
-    y += 50;
-
-    // Save slot — simplified: no "SAVE FILE FOUND" header
-    if (saveMeta) {
-      ctx.fillStyle = t.border;
-      ctx.font = '12px monospace';
-      ctx.fillText(border, cx, y);
-      y += 20;
-
-      const options = ['Continue', 'New Game'];
-      options.forEach((label, i) => {
-        const selected = i === menuSelection;
-        ctx.font = `${selected ? 'bold ' : ''}15px monospace`;
-        ctx.fillStyle = selected ? t.prompt : t.uiDim;
-        ctx.fillText((selected ? '▶ ' : '  ') + label, cx, y);
-        y += 22;
-      });
-    } else {
-      y += 8;
-      ctx.font = 'bold 16px monospace';
-      ctx.fillStyle = t.prompt;
-      if (Math.floor(Date.now() / 600) % 2 === 0) {
-        ctx.fillText('[ Press ENTER or SPACE to begin ]', cx, y);
-      }
-    }
-
-    ctx.textAlign = 'left';
-  }
-
-  // ── Mode Select ──────────────────────────────────────────────────────────
-
-  renderModeSelect(selection: number): void {
     const t   = this.theme;
     const ctx = this.ctx;
     const W   = this.canvas.width;
@@ -321,20 +215,34 @@ export class Renderer {
     ctx.fillRect(0, 0, W, H);
     ctx.textAlign = 'center';
 
-    ctx.font = 'bold 22px monospace';
+    // Title — give the subtitle breathing room below
+    ctx.font = 'bold 36px monospace';
     ctx.fillStyle = t.accent;
-    ctx.fillText('SELECT MODE', cx, 40);
+    ctx.fillText('ROGUE - Akai Edition', cx, 46);
 
-    ctx.font = '12px monospace';
+    ctx.font = '11px monospace';
     ctx.fillStyle = t.uiDim;
-    ctx.fillText('← → to choose   ENTER to confirm   ESC back', cx, 64);
+    ctx.fillText('(UnluckyLisp production)', cx, 90);
 
-    const cardW = 260;
-    const cardH = 200;
-    const gap   = 24;
-    const totalW = cardW * 2 + gap;
-    const startX = cx - totalW / 2;
-    const cardY  = 100;
+    const border = '\u2500'.repeat(52);
+    ctx.fillStyle = t.border;
+    ctx.font = '13px monospace';
+    ctx.fillText(border, cx, 110);
+
+    // Compact keybind reference
+    ctx.font = '11px monospace';
+    ctx.fillStyle = t.uiDim;
+    ctx.fillText('WASD/Arrows move  •  G pick up  •  > descend  •  Y U B N diagonal  •  ESC pause', cx, 128);
+
+    ctx.fillStyle = t.border;
+    ctx.fillText(border, cx, 148);
+
+    // Mode cards
+    const cardW  = 270;
+    const cardH  = 220;
+    const gap    = 20;
+    const startX = cx - (cardW * 2 + gap) / 2;
+    const cardY  = 168;
 
     const modes = [
       {
@@ -347,24 +255,27 @@ export class Renderer {
           '',
           'Pure roguelike.',
         ],
+        saveInfo: saveMeta
+          ? `Save: Depth ${saveMeta.depth} · ${saveMeta.biomeName}`
+          : 'No save — start fresh',
       },
       {
-        label: 'ROGUELITE',
+        label: 'ROGUELIKE',
         color: '#fa4',
         lines: [
           'Gold carries over.',
           'Meta upgrades persist.',
-          'Job advancement every',
-          '7 floors.',
+          'Unlock skins in The Village.',
           '',
           'Progress survives death.',
         ],
+        saveInfo: '',
       },
     ];
 
     modes.forEach((m, i) => {
-      const cx2 = startX + i * (cardW + gap);
-      const isSel = i === selection;
+      const cx2   = startX + i * (cardW + gap);
+      const isSel = i === menuSelection;
 
       ctx.fillStyle = isSel ? m.color + '22' : t.bg;
       ctx.fillRect(cx2, cardY, cardW, cardH);
@@ -373,193 +284,40 @@ export class Renderer {
       ctx.strokeRect(cx2, cardY, cardW, cardH);
 
       ctx.textAlign = 'center';
-      ctx.font = `bold 18px monospace`;
+      ctx.font = 'bold 18px monospace';
       ctx.fillStyle = isSel ? m.color : t.uiDim;
-      ctx.fillText(m.label, cx2 + cardW / 2, cardY + 20);
+      ctx.fillText(m.label, cx2 + cardW / 2, cardY + 22);
 
       ctx.font = '12px monospace';
       ctx.fillStyle = isSel ? t.ui : t.uiDim;
       m.lines.forEach((line, li) => {
         ctx.fillText(line, cx2 + cardW / 2, cardY + 50 + li * 18);
       });
+
+      if (m.saveInfo) {
+        ctx.font = '11px monospace';
+        ctx.fillStyle = isSel ? t.accent : t.uiDim;
+        ctx.fillText(m.saveInfo, cx2 + cardW / 2, cardY + cardH - 18);
+      }
     });
 
-    const promptY = cardY + cardH + 32;
+    // Blinking prompt
+    const promptY = cardY + cardH + 24;
     ctx.textAlign = 'center';
     ctx.font = 'bold 14px monospace';
     ctx.fillStyle = t.prompt;
     if (Math.floor(Date.now() / 500) % 2 === 0) {
-      ctx.fillText(`[ ${modes[selection].label} — Press ENTER ]`, cx, promptY);
+      ctx.fillText(`[ ${modes[menuSelection].label} — Press ENTER ]`, cx, promptY);
     }
+
+    ctx.font = '11px monospace';
+    ctx.fillStyle = t.uiDim;
+    ctx.fillText('← → choose mode', cx, promptY + 22);
+
     ctx.textAlign = 'left';
   }
 
-  // ── Class Select ─────────────────────────────────────────────────────────
-
-  renderClassSelect(classIndex: number): void {
-    const t   = this.theme;
-    const ctx = this.ctx;
-    const W   = this.canvas.width;
-    const H   = this.canvas.height;
-    const cx  = W / 2;
-    const cls = CLASSES[classIndex];
-
-    ctx.fillStyle = t.bg;
-    ctx.fillRect(0, 0, W, H);
-    ctx.textAlign = 'center';
-
-    ctx.font = 'bold 22px monospace';
-    ctx.fillStyle = t.accent;
-    ctx.fillText('CHOOSE YOUR CLASS', cx, 32);
-
-    ctx.font = '12px monospace';
-    ctx.fillStyle = t.uiDim;
-    ctx.fillText('← → to browse   ENTER to begin   ESC back', cx, 58);
-
-    // Tabs
-    const tabW = 140;
-    const tabH = 30;
-    const tabGap = 8;
-    const totalTabW = CLASSES.length * (tabW + tabGap) - tabGap;
-    let tx = cx - totalTabW / 2;
-    const tabY = 78;
-
-    for (let i = 0; i < CLASSES.length; i++) {
-      const c     = CLASSES[i];
-      const isSel = i === classIndex;
-      ctx.fillStyle = isSel ? c.color + '33' : t.bg;
-      ctx.fillRect(tx, tabY, tabW, tabH);
-      ctx.strokeStyle = isSel ? c.color : t.border;
-      ctx.lineWidth = isSel ? 2 : 1;
-      ctx.strokeRect(tx, tabY, tabW, tabH);
-      ctx.font = `${isSel ? 'bold ' : ''}12px monospace`;
-      ctx.fillStyle = isSel ? c.color : t.uiDim;
-      ctx.textAlign = 'center';
-      ctx.fillText(c.name, tx + tabW / 2, tabY + 10);
-      tx += tabW + tabGap;
-    }
-
-    // Detail card
-    const cardX = cx - 280;
-    const cardY  = tabY + tabH + 18;
-    const cardW  = 560;
-    const cardH  = 330;
-
-    ctx.fillStyle = cls.color + '11';
-    ctx.fillRect(cardX, cardY, cardW, cardH);
-    ctx.strokeStyle = cls.color;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(cardX, cardY, cardW, cardH);
-
-    ctx.font = 'bold 72px monospace';
-    ctx.fillStyle = cls.color + 'aa';
-    ctx.textAlign = 'center';
-    ctx.fillText(cls.icon, cardX + 80, cardY + 20);
-
-    ctx.font = 'bold 20px monospace';
-    ctx.fillStyle = cls.color;
-    ctx.textAlign = 'left';
-    ctx.fillText(cls.name, cardX + 150, cardY + 24);
-
-    ctx.font = '13px monospace';
-    ctx.fillStyle = t.uiDim;
-    ctx.fillText(cls.tagline, cardX + 150, cardY + 46);
-
-    ctx.font = '12px monospace';
-    ctx.fillStyle = t.ui;
-    const words = cls.description.split(' ');
-    let line = '';
-    let dy = cardY + 72;
-    for (const word of words) {
-      const test = line ? `${line} ${word}` : word;
-      if (test.length > 52) {
-        ctx.fillText(line, cardX + 150, dy);
-        line = word;
-        dy += 16;
-      } else {
-        line = test;
-      }
-    }
-    if (line) { ctx.fillText(line, cardX + 150, dy); dy += 16; }
-
-    // Stats block
-    const statsY = cardY + 140;
-    ctx.font = 'bold 12px monospace';
-    ctx.fillStyle = t.uiDim;
-    ctx.fillText('STATS', cardX + 20, statsY);
-
-    const swordCount  = cls.gearItems.filter(k => k === ItemKind.Sword).length;
-    const shieldCount = cls.gearItems.filter(k => k === ItemKind.Shield).length;
-    const stats: [string, number | string][] = [
-      ['HP',     cls.hp],
-      ['ATK',    cls.attack + swordCount * 3],
-      ['DEF',    cls.defense + shieldCount * 2],
-      ['FOV',    `${9 + cls.fovBonus} tiles${cls.fovBonus > 0 ? ` (+${cls.fovBonus})` : ''}`],
-    ];
-    ctx.font = '12px monospace';
-    stats.forEach(([label, val], i) => {
-      ctx.fillStyle = t.uiDim;
-      ctx.fillText(label, cardX + 20, statsY + 18 + i * 18);
-      ctx.fillStyle = cls.color;
-      ctx.fillText(String(val), cardX + 70, statsY + 18 + i * 18);
-    });
-
-    const barX  = cardX + 120;
-    const maxStat = { HP: 50, ATK: 15, DEF: 8 };
-    (['HP', 'ATK', 'DEF'] as const).forEach((key, i) => {
-      const rawVal = key === 'HP' ? cls.hp : key === 'ATK' ? cls.attack : cls.defense;
-      const pct = rawVal / maxStat[key];
-      const bW  = 160;
-      ctx.fillStyle = t.border;
-      ctx.fillRect(barX, statsY + 21 + i * 18, bW, 8);
-      ctx.fillStyle = cls.color;
-      ctx.fillRect(barX, statsY + 21 + i * 18, Math.round(bW * pct), 8);
-    });
-
-    // Weapon name
-    ctx.font = '12px monospace';
-    ctx.fillStyle = t.uiDim;
-    ctx.fillText('Weapon', cardX + 20, statsY + 18 + 4 * 18);
-    ctx.fillStyle = cls.color;
-    ctx.fillText(cls.weaponNames[0], cardX + 70, statsY + 18 + 4 * 18);
-
-    // Starting gear
-    const gearY = statsY;
-    ctx.font = 'bold 12px monospace';
-    ctx.fillStyle = t.uiDim;
-    ctx.textAlign = 'right';
-    ctx.fillText('STARTING GEAR', cardX + cardW - 20, gearY);
-
-    const itemNames: Record<number, string> = {
-      [ItemKind.HealthPotion]:    '! Health Potion',
-      [ItemKind.ScrollLightning]: '/ Lightning Scroll',
-      [ItemKind.Sword]:           ') Sword (+3 ATK)',
-      [ItemKind.Shield]:          '[ Shield (+2 DEF)',
-    };
-    const allItems = [...cls.gearItems, ...cls.consumables];
-    ctx.font = '12px monospace';
-    if (allItems.length === 0) {
-      ctx.fillStyle = t.uiDim;
-      ctx.fillText('Nothing — just grit', cardX + cardW - 20, gearY + 18);
-    } else {
-      allItems.forEach((kind, i) => {
-        ctx.fillStyle = cls.color;
-        ctx.fillText(itemNames[kind] ?? `Item ${kind}`, cardX + cardW - 20, gearY + 18 + i * 18);
-      });
-    }
-    ctx.textAlign = 'left';
-
-    const promptY = cardY + cardH + 22;
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 15px monospace';
-    ctx.fillStyle = t.prompt;
-    if (Math.floor(Date.now() / 500) % 2 === 0) {
-      ctx.fillText(`[ Press ENTER to play as ${cls.name} ]`, cx, promptY);
-    }
-    ctx.textAlign = 'left';
-  }
-
-  // ── Lobby ─────────────────────────────────────────────────────────────────
+  // ── The Village (Roguelike lobby) ─────────────────────────────────────────
 
   renderLobby(meta: MetaState, selection: number): void {
     const t   = this.theme;
@@ -574,20 +332,25 @@ export class Renderer {
 
     ctx.font = 'bold 24px monospace';
     ctx.fillStyle = t.accent;
-    ctx.fillText('THE LOBBY', cx, 40);
+    ctx.fillText('THE VILLAGE', cx, 30);
+
+    ctx.font = '11px monospace';
+    ctx.fillStyle = t.uiDim;
+    ctx.fillText('upgrades  •  skins  •  then descend', cx, 50);
 
     ctx.font = '13px monospace';
     ctx.fillStyle = '#ff8';
-    ctx.fillText(`Gold: ${meta.gold}g`, cx, 66);
+    ctx.fillText(`Gold: ${meta.gold}g`, cx, 70);
 
     const border = '\u2500'.repeat(48);
     ctx.fillStyle = t.border;
     ctx.font = '13px monospace';
     ctx.fillText(border, cx, 90);
 
-    ctx.font = 'bold 12px monospace';
+    // ── Stat upgrades ─────────────────────────────────────────────────────
+    ctx.font = 'bold 11px monospace';
     ctx.fillStyle = t.uiDim;
-    ctx.fillText('META UPGRADES', cx, 108);
+    ctx.fillText('UPGRADES', cx, 106);
 
     const upgradeKeys = ['vitality', 'strength', 'fortitude'] as const;
     const rows = upgradeKeys.map(k => {
@@ -597,20 +360,20 @@ export class Renderer {
     });
 
     rows.forEach((row, i) => {
-      const y       = 134 + i * 32;
-      const isSel   = i === selection;
-      const maxed   = row.cost === null;
+      const y     = 124 + i * 28;
+      const isSel = i === selection;
+      const maxed = row.cost === null;
 
       if (isSel) {
         ctx.fillStyle = t.accent + '22';
-        ctx.fillRect(cx - 240, y - 12, 480, 26);
+        ctx.fillRect(cx - 240, y - 10, 480, 22);
         ctx.strokeStyle = t.accent;
         ctx.lineWidth = 1;
-        ctx.strokeRect(cx - 240, y - 12, 480, 26);
+        ctx.strokeRect(cx - 240, y - 10, 480, 22);
       }
 
       ctx.textAlign = 'left';
-      ctx.font = `${isSel ? 'bold ' : ''}13px monospace`;
+      ctx.font = `${isSel ? 'bold ' : ''}12px monospace`;
       ctx.fillStyle = maxed ? t.uiDim : (isSel ? t.prompt : t.ui);
       ctx.fillText((isSel ? '▶ ' : '  ') + row.label, cx - 230, y);
 
@@ -624,118 +387,95 @@ export class Renderer {
       } else {
         const canAfford = meta.gold >= (row.cost ?? 0);
         ctx.fillStyle = canAfford ? '#ff8' : '#a44';
-        ctx.fillText(`Next: ${row.cost}g`, cx + 240, y);
+        ctx.fillText(`${row.cost}g`, cx + 240, y);
       }
       ctx.textAlign = 'center';
     });
 
-    // Divider
-    const divY = 134 + rows.length * 32 + 8;
+    // ── Skins ─────────────────────────────────────────────────────────────
+    const skinsHeaderY = 124 + rows.length * 28 + 10;
     ctx.fillStyle = t.border;
     ctx.font = '13px monospace';
+    ctx.fillText(border, cx, skinsHeaderY);
+
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = t.uiDim;
+    ctx.fillText('SKINS', cx, skinsHeaderY + 16);
+
+    THEMES.forEach((theme, i) => {
+      const si    = upgradeKeys.length + i;
+      const y     = skinsHeaderY + 34 + i * 24;
+      const isSel = si === selection;
+      const owned = meta.unlockedSkins.includes(theme.name);
+      const active = meta.activeSkin === theme.name;
+      const cost  = SKIN_COSTS[theme.name] ?? 100;
+
+      if (isSel) {
+        ctx.fillStyle = t.accent + '22';
+        ctx.fillRect(cx - 240, y - 10, 480, 20);
+        ctx.strokeStyle = t.accent;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cx - 240, y - 10, 480, 20);
+      }
+
+      // Color swatch
+      ctx.fillStyle = theme.player;
+      ctx.font = '12px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('@', cx - 230, y);
+
+      ctx.fillStyle = isSel ? t.prompt : (owned ? t.ui : t.uiDim);
+      ctx.font = `${isSel ? 'bold ' : ''}12px monospace`;
+      ctx.fillText((isSel ? '▶ ' : '  ') + theme.name, cx - 215, y);
+
+      ctx.textAlign = 'right';
+      if (active) {
+        ctx.fillStyle = t.accent;
+        ctx.fillText('[equipped]', cx + 240, y);
+      } else if (owned) {
+        ctx.fillStyle = isSel ? t.prompt : t.uiDim;
+        ctx.fillText('ENTER to equip', cx + 240, y);
+      } else {
+        const canAfford = meta.gold >= cost;
+        ctx.fillStyle = canAfford ? '#ff8' : '#a44';
+        ctx.fillText(`${cost}g`, cx + 240, y);
+      }
+      ctx.textAlign = 'center';
+    });
+
+    // ── Descend ───────────────────────────────────────────────────────────
+    const descIdx  = upgradeKeys.length + THEMES.length;
+    const divY     = skinsHeaderY + 34 + THEMES.length * 24 + 4;
+    ctx.fillStyle  = t.border;
+    ctx.font       = '13px monospace';
     ctx.fillText(border, cx, divY);
 
-    // Descend option
-    const descY   = divY + 24;
-    const descSel = selection === upgradeKeys.length;
+    const descY   = divY + 20;
+    const descSel = selection === descIdx;
     if (descSel) {
       ctx.fillStyle = t.accent + '22';
-      ctx.fillRect(cx - 240, descY - 12, 480, 26);
+      ctx.fillRect(cx - 240, descY - 10, 480, 22);
       ctx.strokeStyle = t.accent;
       ctx.lineWidth = 1;
-      ctx.strokeRect(cx - 240, descY - 12, 480, 26);
+      ctx.strokeRect(cx - 240, descY - 10, 480, 22);
     }
-    ctx.textAlign = 'center';
     ctx.font = `${descSel ? 'bold ' : ''}14px monospace`;
     ctx.fillStyle = descSel ? t.prompt : t.ui;
     ctx.fillText((descSel ? '▶ ' : '  ') + 'Descend into the dungeon', cx, descY);
 
     ctx.fillStyle = t.border;
-    ctx.fillText(border, cx, descY + 20);
+    ctx.fillText(border, cx, descY + 18);
 
     ctx.font = '11px monospace';
     ctx.fillStyle = t.uiDim;
-    ctx.fillText('↑ ↓ navigate   ENTER buy / start   ESC main menu', cx, descY + 38);
+    ctx.fillText('↑ ↓ navigate   ENTER buy/equip/start   ESC main menu', cx, descY + 34);
 
-    ctx.textAlign = 'left';
-  }
-
-  // ── Upgrade Room ─────────────────────────────────────────────────────────
-
-  renderUpgradeRoom(opts: { label: string; desc: string; cost: number; disabled: boolean }[], selection: number, gold: number): void {
-    const t   = this.theme;
-    const ctx = this.ctx;
-    const W   = this.canvas.width;
-    const H   = this.canvas.height;
-    const cx  = W / 2;
-    const cy  = H / 2;
-
-    ctx.fillStyle = 'rgba(0,0,0,0.80)';
-    ctx.fillRect(0, 0, W, H);
-
-    const boxW = 520;
-    const boxH = 60 + opts.length * 48 + 50;
-    const bx   = cx - boxW / 2;
-    const by   = cy - boxH / 2;
-
-    ctx.fillStyle = t.bg;
-    ctx.fillRect(bx, by, boxW, boxH);
-    ctx.strokeStyle = t.accent;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(bx, by, boxW, boxH);
-
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 18px monospace';
-    ctx.fillStyle = t.accent;
-    ctx.fillText('UPGRADE ROOM', cx, by + 24);
-
-    ctx.font = '12px monospace';
-    ctx.fillStyle = t.border;
-    ctx.fillText('\u2500'.repeat(44), cx, by + 42);
-
-    opts.forEach((opt, i) => {
-      const oy    = by + 62 + i * 48;
-      const isSel = i === selection;
-
-      if (isSel) {
-        ctx.fillStyle = t.accent + '22';
-        ctx.fillRect(bx + 16, oy - 10, boxW - 32, 38);
-        ctx.strokeStyle = t.accent;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(bx + 16, oy - 10, boxW - 32, 38);
-      }
-
-      const labelColor = opt.disabled ? t.uiDim : (isSel ? t.prompt : t.ui);
-      const costLabel  = opt.cost > 0 ? `[${opt.cost}g]` : '[FREE]';
-      const costColor  = opt.disabled ? t.uiDim : (opt.cost > 0 && opt.cost > gold ? '#a44' : '#ff8');
-
-      ctx.textAlign = 'left';
-      ctx.font = `${isSel ? 'bold ' : ''}13px monospace`;
-      ctx.fillStyle = labelColor;
-      ctx.fillText((isSel ? '▶ ' : '  ') + opt.label, bx + 24, oy);
-
-      ctx.textAlign = 'right';
-      ctx.font = '12px monospace';
-      ctx.fillStyle = costColor;
-      ctx.fillText(costLabel, bx + boxW - 24, oy);
-
-      ctx.textAlign = 'left';
-      ctx.font = '11px monospace';
-      ctx.fillStyle = t.uiDim;
-      ctx.fillText('  ' + opt.desc, bx + 24, oy + 16);
-    });
-
-    const footY = by + boxH - 20;
-    ctx.textAlign = 'center';
-    ctx.font = '11px monospace';
-    ctx.fillStyle = t.uiDim;
-    ctx.fillText(`Gold: ${gold}g    ↑↓ navigate   ENTER confirm   ESC skip`, cx, footY);
     ctx.textAlign = 'left';
   }
 
   // ── Pause menu ────────────────────────────────────────────────────────────
 
-  renderPauseMenu(selection: number, mode: 'classic' | 'roguelite'): void {
+  renderPauseMenu(selection: number, mode: 'classic' | 'roguelike'): void {
     const t   = this.theme;
     const ctx = this.ctx;
     const W   = this.canvas.width;
@@ -767,7 +507,7 @@ export class Renderer {
     ctx.font = '12px monospace';
     ctx.fillText('\u2500'.repeat(24), cx, by + 46);
 
-    const quitLabel = mode === 'roguelite' ? 'Return to Menu' : 'Save & Quit';
+    const quitLabel = mode === 'roguelike' ? 'Return to Menu' : 'Save & Quit';
     const options   = ['Resume', 'Clan Primer', quitLabel];
     options.forEach((label, i) => {
       const isSel = i === selection;
@@ -795,8 +535,9 @@ export class Renderer {
 
   renderClanPrimer(
     monsterBook: Record<string, MonsterBookEntry>,
-    tab: 'book' | 'hunts',
+    tab: 'book' | 'items' | 'hazards' | 'hunts',
     scroll: number,
+    discoveries: Discoveries,
   ): void {
     const t   = this.theme;
     const ctx = this.ctx;
@@ -819,10 +560,15 @@ export class Renderer {
     ctx.strokeRect(bx, by, boxW, boxH);
 
     // Tabs
-    const tabs: [string, 'book' | 'hunts'][] = [['Monster Book', 'book'], ['Hunts', 'hunts']];
-    const tabW = 140;
+    const tabs: [string, typeof tab][] = [
+      ['Monsters', 'book'],
+      ['Items',    'items'],
+      ['Hazards',  'hazards'],
+      ['Hunts',    'hunts'],
+    ];
+    const tabW = (boxW - 40 - (tabs.length - 1) * 6) / tabs.length;
     tabs.forEach(([label, id], i) => {
-      const tx    = bx + 20 + i * (tabW + 8);
+      const tx    = bx + 20 + i * (tabW + 6);
       const isSel = tab === id;
       ctx.fillStyle = isSel ? t.accent + '33' : t.bg;
       ctx.fillRect(tx, by + 8, tabW, 28);
@@ -830,7 +576,7 @@ export class Renderer {
       ctx.lineWidth = isSel ? 2 : 1;
       ctx.strokeRect(tx, by + 8, tabW, 28);
       ctx.textAlign = 'center';
-      ctx.font = `${isSel ? 'bold ' : ''}12px monospace`;
+      ctx.font = `${isSel ? 'bold ' : ''}11px monospace`;
       ctx.fillStyle = isSel ? t.accent : t.uiDim;
       ctx.fillText(label, tx + tabW / 2, by + 16);
     });
@@ -858,7 +604,6 @@ export class Renderer {
         ctx.fillText('No monsters encountered yet.', cx, contentY + 30);
         ctx.textAlign = 'left';
       } else {
-        // Header
         ctx.font = 'bold 11px monospace';
         ctx.fillStyle = t.uiDim;
         ctx.fillText('  Monster', bx + 24, contentY + 12);
@@ -889,8 +634,82 @@ export class Renderer {
           ctx.textAlign = 'left';
         }
       }
+
+    } else if (tab === 'items') {
+      const ALL_ITEMS: [string, string, string, string][] = [
+        // [codexName, glyph, color, desc]
+        ['Health Potion',    '!',      '#f44', 'Health Potion    — Restore 10–20 HP'],
+        ['Super Mushroom',   '\u25c6', '#f44', 'Super Mushroom   — Restore 25–40 HP'],
+        ['Coin Bag',         '\u00a2', '#ff8', 'Coin Bag         — +20–40g (roguelike) or +15 XP (classic)'],
+        ['Shield',           '[',      '#4af', 'Shield           — +2 DEF permanently'],
+        ['Lightning Scroll', '/',      '#fa4', 'Lightning Scroll — 15–25 dmg to nearest monster'],
+        ['Fire Flower',      '\u2660', '#f80', 'Fire Flower      — Burn all visible enemies 8–14 dmg'],
+        ['Bomb',             '\u263b', '#888', 'Bomb             — Blast adjacent enemies 10–18 dmg'],
+        ['Lantern',          ':',      '#ff8', 'Lantern          — +5 FOV for 15 turns'],
+        ['Star',             '*',      '#ff0', 'Star             — 3 turns of invincibility'],
+        ['Magic Map',        '?',      '#fff', 'Magic Map        — Reveal entire current floor'],
+        ['Ice Bomb',         '*',      '#4af', 'Ice Bomb         — Freeze all visible enemies 2 turns'],
+        ['Weapon',           ')',      '#aaf', 'Weapon (proc.)   — ATK scales with depth; equip replaces current'],
+      ];
+      const found = ALL_ITEMS.filter(([name]) => discoveries.items.includes(name));
+      if (found.length === 0) {
+        ctx.font = '13px monospace';
+        ctx.fillStyle = t.uiDim;
+        ctx.textAlign = 'center';
+        ctx.fillText('No items discovered yet.', cx, contentY + 30);
+        ctx.fillText('Pick up items to add them here.', cx, contentY + 52);
+        ctx.textAlign = 'left';
+      } else {
+        const rowH = 22;
+        found.forEach(([, glyph, color, desc], i) => {
+          const ey = contentY + 16 + i * rowH;
+          ctx.font = '13px monospace';
+          ctx.fillStyle = color;
+          ctx.fillText(glyph, bx + 28, ey);
+          ctx.fillStyle = t.ui;
+          ctx.font = '12px monospace';
+          ctx.fillText(desc, bx + 48, ey);
+        });
+      }
+
+    } else if (tab === 'hazards') {
+      const ALL_HAZARDS: [string, string, string, string][] = [
+        ['Ice Floor',  '\u00b0', '#44aaff', 'You slide — momentum carries you until hitting a wall or monster. Floors 8–14.'],
+        ['Slime Pool', '%',      '#66cc33', 'Deals 1 HP per turn while you stand in it. Floors 15–21.'],
+        ['Lava Floor', '~',      '#ff6600', 'Deals 3 HP per turn. Also created by Fire Dragon attacks. Floors 22–28.'],
+      ];
+      const found = ALL_HAZARDS.filter(([name]) => discoveries.hazards.includes(name));
+      if (found.length === 0) {
+        ctx.font = '13px monospace';
+        ctx.fillStyle = t.uiDim;
+        ctx.textAlign = 'center';
+        ctx.fillText('No hazards encountered yet.', cx, contentY + 30);
+        ctx.fillText('Step on a hazard tile to log it here.', cx, contentY + 52);
+        ctx.textAlign = 'left';
+      } else {
+        found.forEach(([name, glyph, color, desc], i) => {
+          const ey = contentY + 30 + i * 72;
+          ctx.font = 'bold 22px monospace';
+          ctx.fillStyle = color;
+          ctx.fillText(glyph, bx + 30, ey);
+          ctx.font = 'bold 13px monospace';
+          ctx.fillStyle = color;
+          ctx.fillText(name, bx + 60, ey + 2);
+          ctx.font = '12px monospace';
+          ctx.fillStyle = t.ui;
+          const words = desc.split(' ');
+          let line = '';
+          let dy = ey + 20;
+          for (const word of words) {
+            const test = line ? `${line} ${word}` : word;
+            if (test.length > 58) { ctx.fillText(line, bx + 60, dy); line = word; dy += 16; }
+            else { line = test; }
+          }
+          if (line) ctx.fillText(line, bx + 60, dy);
+        });
+      }
+
     } else {
-      // Hunts stub
       ctx.font = '13px monospace';
       ctx.fillStyle = t.uiDim;
       ctx.textAlign = 'center';
@@ -902,60 +721,22 @@ export class Renderer {
     ctx.font = '11px monospace';
     ctx.fillStyle = t.uiDim;
     ctx.textAlign = 'center';
-    ctx.fillText('← → or TAB switch tabs   ESC close', cx, by + boxH - 14);
+    ctx.fillText('← → switch tabs   ESC close', cx, by + boxH - 14);
     ctx.textAlign = 'left';
   }
-
-  private drawThemeSelector(ctx: CanvasRenderingContext2D, cx: number, y: number): void {
-    const swatchW = 72;
-    const swatchH = 26;
-    const gap     = 6;
-    const totalW  = THEMES.length * (swatchW + gap) - gap;
-    let sx = cx - totalW / 2;
-
-    for (let i = 0; i < THEMES.length; i++) {
-      const th         = THEMES[i];
-      const isSelected = i === this.themeIndex;
-
-      ctx.fillStyle = th.bg;
-      ctx.fillRect(sx, y, swatchW, swatchH);
-      ctx.strokeStyle = isSelected ? th.accent : th.border;
-      ctx.lineWidth = isSelected ? 2 : 1;
-      ctx.strokeRect(sx, y, swatchW, swatchH);
-
-      ctx.textAlign = 'center';
-      ctx.font = `${isSelected ? 'bold ' : ''}10px monospace`;
-      ctx.fillStyle = isSelected ? th.accent : th.uiDim;
-      ctx.fillText(th.name, sx + swatchW / 2, y + 7);
-
-      ctx.font = '10px monospace';
-      ctx.fillStyle = th.player;
-      ctx.fillText('@', sx + swatchW / 2 - 11, y + swatchH - 11);
-      ctx.fillStyle = th.wallVis;
-      ctx.fillText('#', sx + swatchW / 2, y + swatchH - 11);
-      ctx.fillStyle = th.floorVis;
-      ctx.fillText('.', sx + swatchW / 2 + 10, y + swatchH - 11);
-
-      if (isSelected) {
-        ctx.fillStyle = th.accent;
-        ctx.font = '10px monospace';
-        ctx.fillText('▲', sx + swatchW / 2, y + swatchH + 3);
-      }
-
-      sx += swatchW + gap;
-    }
-  }
 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeBar(current: number, max: number, width: number): string {
   const filled = Math.round((current / max) * width);
-  return '[' + '|'.repeat(filled) + '-'.repeat(width - filled) + ']';
+  return '[' + '█'.repeat(Math.max(0, filled)) + '░'.repeat(Math.max(0, width - filled)) + ']';
 }
 
 function dimColor(hex: string): string {
-  const n = parseInt(hex.slice(1), 16);
-  const r = Math.floor(((n >> 16) & 0xff) * 0.3);
-  const g = Math.floor(((n >>  8) & 0xff) * 0.3);
-  const b = Math.floor(( n        & 0xff) * 0.3);
-  return `rgb(${r},${g},${b})`;
+  // Parse hex color and dim it by ~50%
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgb(${Math.round(r * 0.4)},${Math.round(g * 0.4)},${Math.round(b * 0.4)})`;
 }

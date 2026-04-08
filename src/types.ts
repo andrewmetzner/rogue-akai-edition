@@ -31,11 +31,11 @@ export type EntityType = (typeof EntityType)[keyof typeof EntityType];
 export const ItemKind = {
   // ── Implemented ──────────────────────────────────────────────────────────
   HealthPotion:    0,
-  Sword:           1,
+  Sword:           1,   // procedurally generated weapon
   Shield:          2,
   ScrollLightning: 3,
 
-  // ── Planned (not yet spawned or implemented) ──────────────────────────────
+  // ── Exploration ───────────────────────────────────────────────────────────
   MagicMap:      10,  // reveals entire current floor
   Wand:          11,  // ranged attack, limited charges
   IceBomb:       12,  // freeze all visible monsters
@@ -49,11 +49,11 @@ export const ItemKind = {
   FireFlower:    21,  // damages all visible monsters
   SuperMushroom: 22,  // big heal (25–40 HP)
   Bomb:          23,  // damages all adjacent monsters
-  CoinBag:       24,  // +gold (roguelite) or +XP (classic)
+  CoinBag:       24,  // +gold (roguelike) or +XP (classic)
 } as const;
 export type ItemKind = (typeof ItemKind)[keyof typeof ItemKind];
 
-export type GameMode = 'classic' | 'roguelite';
+export type GameMode = 'classic' | 'roguelike';
 
 export interface Stats {
   hp: number;
@@ -76,6 +76,7 @@ export interface Entity {
   level?: number;
   special?: 'freeze' | 'fireline';
   frozenTurns?: number;   // for IceBomb effect on monsters
+  weaponAtk?: number;     // procedural weapon: the ATK bonus this item gives
   alive: boolean;
 }
 
@@ -95,7 +96,6 @@ export interface GameState {
   player: Entity;
   depth: number;
   biomeId: string;
-  classId: string;
   fovRadius: number;
   turn: number;
   frozenTurns: number;        // player is frozen (blue, can't move)
@@ -103,9 +103,8 @@ export interface GameState {
 
   // ── Mode & progression ────────────────────────────────────────────────────
   mode: GameMode;
-  gold: number;               // run gold (roguelite only; 0 in classic)
-  advancement: string | null; // e.g. 'dragon-knight'; null = not yet advanced
-  weaponTier: number;         // 0–3 (upgrade room gives +1 each time)
+  gold: number;               // run gold (roguelike only; 0 in classic)
+  equippedWeapon: { name: string; atk: number } | null;
 
   // ── Timed effects ─────────────────────────────────────────────────────────
   invincibleUntilTurn: number; // Star item: 0 = inactive

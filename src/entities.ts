@@ -1,7 +1,9 @@
 import { type Entity, EntityType, ItemKind, type Rect, type Stats, Tile } from './types';
-import { type CharClass } from './classes';
 
 let nextId = 1;
+
+// Base player stats before meta upgrades
+export const BASE_PLAYER = { hp: 35, atk: 8, def: 3 } as const;
 
 function makeStats(hp: number, attack: number, defense: number): Stats {
   return { hp, maxHp: hp, attack, defense, xp: 0 };
@@ -10,65 +12,59 @@ function makeStats(hp: number, attack: number, defense: number): Stats {
 export function createPlayer(
   x: number,
   y: number,
-  cls: CharClass,
-  hpOverride?: number,
-  atkOverride?: number,
-  defOverride?: number,
+  hp: number,
+  atk: number,
+  def: number,
 ): Entity {
-  // Apply permanent gear bonuses (sword) directly to base stats
-  let atkBonus = 0;
-  for (const kind of cls.gearItems) {
-    if (kind === ItemKind.Sword) atkBonus += 3;
-  }
-  const hp  = hpOverride  ?? cls.hp;
-  const atk = atkOverride ?? (cls.attack + atkBonus);
-  const def = defOverride ?? cls.defense;
   return {
     id: nextId++,
     x, y,
     type: EntityType.Player,
     glyph: '@',
     color: '#fff',
-    name: cls.name,
-    stats: { hp, maxHp: hp, attack: atk, defense: def, xp: 0 },
+    name: 'Player',
+    stats: makeStats(hp, atk, def),
     alive: true,
   };
 }
 
-/** Spawn consumable starting items at the player's starting position. */
-export function spawnStartItems(cls: CharClass, x: number, y: number): Entity[] {
-  const itemDefs: Record<ItemKind, { glyph: string; color: string; name: string }> = {
-    [ItemKind.HealthPotion]:    { glyph: '!', color: '#f44',  name: 'Health Potion' },
-    [ItemKind.ScrollLightning]: { glyph: '/', color: '#fa4',  name: 'Lightning Scroll' },
-    [ItemKind.Sword]:           { glyph: ')', color: '#aaf',  name: 'Sword' },
-    [ItemKind.Shield]:          { glyph: '[', color: '#4af',  name: 'Shield' },
-    [ItemKind.MagicMap]:        { glyph: '?', color: '#fff',  name: 'Magic Map' },
-    [ItemKind.Wand]:            { glyph: '\\', color: '#fa4', name: 'Wand' },
-    [ItemKind.IceBomb]:         { glyph: '*', color: '#4af',  name: 'Ice Bomb' },
-    [ItemKind.Lantern]:         { glyph: ':', color: '#ff8',  name: 'Lantern' },
-    [ItemKind.Ring]:            { glyph: '=', color: '#faf',  name: 'Ring' },
-    [ItemKind.Boots]:           { glyph: '"', color: '#aaa',  name: 'Boots' },
-    [ItemKind.Amulet]:          { glyph: '"', color: '#ff8',  name: 'Amulet' },
-    [ItemKind.Star]:            { glyph: '*', color: '#ff0',  name: 'Star' },
-    [ItemKind.FireFlower]:      { glyph: '\u2660', color: '#f80', name: 'Fire Flower' },
-    [ItemKind.SuperMushroom]:   { glyph: '\u25c6', color: '#f44', name: 'Super Mushroom' },
-    [ItemKind.Bomb]:            { glyph: '\u263b', color: '#888', name: 'Bomb' },
-    [ItemKind.CoinBag]:         { glyph: '\u00a2', color: '#ff8', name: 'Coin Bag' },
-  };
-  return cls.consumables.map(kind => {
-    const def = itemDefs[kind];
-    return {
-      id: nextId++,
-      x, y,
-      type: EntityType.Item,
-      glyph: def.glyph,
-      color: def.color,
-      name: def.name,
-      itemKind: kind,
-      alive: true,
-    };
-  });
+// ── Procedural weapon generation ─────────────────────────────────────────────
+
+const WEAPON_PREFIXES = [
+  'Rusty', 'Old', 'Worn', 'Iron', 'Steel',
+  'Sharp', 'Silver', 'Enchanted', 'Ancient', 'Mythic', 'Divine',
+];
+const WEAPON_TYPES = [
+  'Sword', 'Blade', 'Axe', 'Spear', 'Hammer',
+  'Dagger', 'Falchion', 'Rapier', 'Cleaver',
+];
+
+function weaponAtkRange(depth: number): [number, number] {
+  if (depth <= 7)  return [2, 6];
+  if (depth <= 14) return [5, 11];
+  if (depth <= 21) return [9, 17];
+  return [13, 22];
 }
+
+export function generateWeapon(depth: number, x: number, y: number): Entity {
+  const prefix = WEAPON_PREFIXES[rng(0, WEAPON_PREFIXES.length - 1)];
+  const type   = WEAPON_TYPES[rng(0, WEAPON_TYPES.length - 1)];
+  const [min, max] = weaponAtkRange(depth);
+  const atk = rng(min, max);
+  return {
+    id: nextId++,
+    x, y,
+    type: EntityType.Item,
+    glyph: ')',
+    color: '#aaf',
+    name: `${prefix} ${type}`,
+    itemKind: ItemKind.Sword,
+    weaponAtk: atk,
+    alive: true,
+  };
+}
+
+// ── Monster templates ─────────────────────────────────────────────────────────
 
 interface MonsterTemplate {
   glyph: string;
@@ -108,24 +104,25 @@ const MONSTERS: MonsterTemplate[] = [
   { glyph: 'Z', color: '#ff6600', name: 'Fire Dragon',  hp: 55, attack: 14, defense: 6, minDepth: 25, maxDepth: 28, special: 'fireline' },
 ];
 
+// ── Consumable / exploration items ────────────────────────────────────────────
+
 const ITEMS: { glyph: string; color: string; name: string; kind: ItemKind; minDepth: number }[] = [
   // ── Always available ──────────────────────────────────────────────────
   { glyph: '!',      color: '#f44',  name: 'Health Potion',    kind: ItemKind.HealthPotion,    minDepth: 1 },
   { glyph: '\u25c6', color: '#f44',  name: 'Super Mushroom',   kind: ItemKind.SuperMushroom,   minDepth: 1 },
   { glyph: '\u00a2', color: '#ff8',  name: 'Coin Bag',         kind: ItemKind.CoinBag,         minDepth: 1 },
-  { glyph: ')',       color: '#aaf',  name: 'Sword',            kind: ItemKind.Sword,           minDepth: 1 },
-  { glyph: '[',       color: '#4af',  name: 'Shield',           kind: ItemKind.Shield,          minDepth: 1 },
+  { glyph: '[',      color: '#4af',  name: 'Shield',           kind: ItemKind.Shield,          minDepth: 1 },
 
   // ── Mid dungeon ───────────────────────────────────────────────────────
-  { glyph: '/',       color: '#fa4',  name: 'Lightning Scroll', kind: ItemKind.ScrollLightning, minDepth: 2 },
-  { glyph: '\u2660',  color: '#f80',  name: 'Fire Flower',      kind: ItemKind.FireFlower,      minDepth: 3 },
-  { glyph: '\u263b',  color: '#888',  name: 'Bomb',             kind: ItemKind.Bomb,            minDepth: 4 },
-  { glyph: ':',       color: '#ff8',  name: 'Lantern',          kind: ItemKind.Lantern,         minDepth: 5 },
-  { glyph: '*',       color: '#ff0',  name: 'Star',             kind: ItemKind.Star,            minDepth: 5 },
-  { glyph: '?',       color: '#fff',  name: 'Magic Map',        kind: ItemKind.MagicMap,        minDepth: 6 },
+  { glyph: '/',      color: '#fa4',  name: 'Lightning Scroll', kind: ItemKind.ScrollLightning, minDepth: 2 },
+  { glyph: '\u2660', color: '#f80',  name: 'Fire Flower',      kind: ItemKind.FireFlower,      minDepth: 3 },
+  { glyph: '\u263b', color: '#888',  name: 'Bomb',             kind: ItemKind.Bomb,            minDepth: 4 },
+  { glyph: ':',      color: '#ff8',  name: 'Lantern',          kind: ItemKind.Lantern,         minDepth: 5 },
+  { glyph: '*',      color: '#ff0',  name: 'Star',             kind: ItemKind.Star,            minDepth: 5 },
+  { glyph: '?',      color: '#fff',  name: 'Magic Map',        kind: ItemKind.MagicMap,        minDepth: 6 },
 
   // ── Deep dungeon ──────────────────────────────────────────────────────
-  { glyph: '*',       color: '#4af',  name: 'Ice Bomb',         kind: ItemKind.IceBomb,         minDepth: 8 },
+  { glyph: '*',      color: '#4af',  name: 'Ice Bomb',         kind: ItemKind.IceBomb,         minDepth: 8 },
 ];
 
 function rng(min: number, max: number): number {
@@ -158,13 +155,12 @@ export function spawnEntities(
   depth: number,
   playerX: number,
   playerY: number,
-  bonusItemChance = 0,
 ): Entity[] {
   const entities: Entity[] = [];
   const occupied = new Set<string>();
   occupied.add(`${playerX},${playerY}`);
 
-  const eligible = MONSTERS.filter(m =>
+  const eligible     = MONSTERS.filter(m =>
     m.minDepth <= depth && (m.maxDepth === undefined || m.maxDepth >= depth)
   );
   const eligibleItems = ITEMS.filter(i => i.minDepth <= depth);
@@ -172,12 +168,12 @@ export function spawnEntities(
   for (let i = 1; i < rooms.length; i++) {
     const room = rooms[i];
     const monsterCount = rng(0, 2 + Math.floor(depth / 3));
-    const itemCount = rng(0, 1) + (Math.random() < bonusItemChance ? 1 : 0);
+    const itemCount    = rng(0, 1);
 
     for (let m = 0; m < monsterCount; m++) {
       const pos = randomFloorInRoom(room, map, mapWidth, occupied);
       if (!pos) continue;
-      const tmpl = eligible[rng(0, eligible.length - 1)];
+      const tmpl    = eligible[rng(0, eligible.length - 1)];
       const hpBonus = (depth - 1) * 2;
       entities.push({
         id: nextId++,
@@ -207,6 +203,12 @@ export function spawnEntities(
         itemKind: tmpl.kind,
         alive: true,
       });
+    }
+
+    // ~20% chance per room to also spawn a procedural weapon
+    if (Math.random() < 0.20) {
+      const pos = randomFloorInRoom(room, map, mapWidth, occupied);
+      if (pos) entities.push(generateWeapon(depth, pos.x, pos.y));
     }
   }
 

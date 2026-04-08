@@ -2,7 +2,7 @@ import { type GameState } from './types';
 import { playerLevel } from './combat';
 
 const SAVE_KEY = 'rogue-akai-edition-save';
-const SAVE_VERSION = 3;
+const SAVE_VERSION = 4;
 
 export interface SaveMeta {
   depth: number;
@@ -27,15 +27,13 @@ interface SaveData {
   entities: object[];
   depth: number;
   biomeId: string;
-  classId: string;
   fovRadius: number;
   turn: number;
   frozenTurns: number;
   log: string[];
   mode: string;
   gold: number;
-  advancement: string | null;
-  weaponTier: number;
+  equippedWeapon: { name: string; atk: number } | null;
   invincibleUntilTurn: number;
   lanternExpiresAt: number;
   monsterBook: object;
@@ -63,15 +61,13 @@ export function saveGame(state: GameState, biomeId: string, themeIndex: number):
     entities:  state.entities,
     depth:     state.depth,
     biomeId,
-    classId:   state.classId,
     fovRadius: state.fovRadius,
     turn:      state.turn,
     frozenTurns: state.frozenTurns,
     log:       state.log,
     mode:      state.mode,
     gold:      state.gold,
-    advancement: state.advancement,
-    weaponTier: state.weaponTier,
+    equippedWeapon: state.equippedWeapon,
     invincibleUntilTurn: state.invincibleUntilTurn,
     lanternExpiresAt: state.lanternExpiresAt,
     monsterBook: state.monsterBook,
@@ -127,15 +123,13 @@ export function loadGame(): LoadedGame | null {
       entities:    data.entities as any[],
       depth:       data.depth,
       biomeId:     data.biomeId,
-      classId:     data.classId ?? 'warrior',
       fovRadius:   data.fovRadius ?? 9,
       turn:        data.turn,
       frozenTurns: data.frozenTurns ?? 0,
       log:         data.log,
-      mode:        (data.mode as 'classic' | 'roguelite') ?? 'classic',
+      mode:        (data.mode as 'classic' | 'roguelike') ?? 'classic',
       gold:        data.gold ?? 0,
-      advancement: data.advancement ?? null,
-      weaponTier:  data.weaponTier ?? 0,
+      equippedWeapon: data.equippedWeapon ?? null,
       invincibleUntilTurn: data.invincibleUntilTurn ?? 0,
       lanternExpiresAt:    data.lanternExpiresAt ?? 0,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

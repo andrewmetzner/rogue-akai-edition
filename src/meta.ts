@@ -1,5 +1,5 @@
-// Meta-progression save system for Roguelite mode.
-// Persists gold and lobby upgrades across runs.
+// Meta-progression save system for Roguelike mode.
+// Persists gold, lobby upgrades, and unlocked skins across runs.
 // Separate from the run save (localStorage['rogue-akai-edition-save']).
 
 const META_KEY = 'rogue-akai-edition-meta';
@@ -13,6 +13,8 @@ export interface MetaUpgrades {
 export interface MetaState {
   gold: number;
   upgrades: MetaUpgrades;
+  unlockedSkins: string[];  // theme names; 'Classic' always owned
+  activeSkin: string;       // name of currently equipped skin
 }
 
 export const META_UPGRADE_COSTS: Record<keyof MetaUpgrades, readonly number[]> = {
@@ -27,14 +29,31 @@ export const META_UPGRADE_LABELS: Record<keyof MetaUpgrades, string> = {
   fortitude: 'Fortitude (+1 DEF)',
 };
 
+// Gold cost to unlock each skin; 0 = free/always owned
+export const SKIN_COSTS: Record<string, number> = {
+  'Classic':    0,
+  'Pea Soup':   80,
+  'Amber':      80,
+  'Blood Moon': 100,
+  'Oceanic':    100,
+  'Amethyst':   120,
+  'Copper':     80,
+};
+
 const DEFAULT_META: MetaState = {
   gold: 0,
   upgrades: { vitality: 0, strength: 0, fortitude: 0 },
+  unlockedSkins: ['Classic'],
+  activeSkin: 'Classic',
 };
 
 export function loadMeta(): MetaState {
   const raw = localStorage.getItem(META_KEY);
-  if (!raw) return { ...DEFAULT_META, upgrades: { ...DEFAULT_META.upgrades } };
+  if (!raw) return {
+    ...DEFAULT_META,
+    upgrades: { ...DEFAULT_META.upgrades },
+    unlockedSkins: [...DEFAULT_META.unlockedSkins],
+  };
   try {
     const parsed = JSON.parse(raw) as MetaState;
     return {
@@ -44,9 +63,15 @@ export function loadMeta(): MetaState {
         strength:  parsed.upgrades?.strength  ?? 0,
         fortitude: parsed.upgrades?.fortitude ?? 0,
       },
+      unlockedSkins: Array.isArray(parsed.unlockedSkins) ? parsed.unlockedSkins : ['Classic'],
+      activeSkin: parsed.activeSkin ?? 'Classic',
     };
   } catch {
-    return { ...DEFAULT_META, upgrades: { ...DEFAULT_META.upgrades } };
+    return {
+      ...DEFAULT_META,
+      upgrades: { ...DEFAULT_META.upgrades },
+      unlockedSkins: [...DEFAULT_META.unlockedSkins],
+    };
   }
 }
 
@@ -73,67 +98,4 @@ export function nextUpgradeCost(kind: keyof MetaUpgrades, currentLevel: number):
   const costs = META_UPGRADE_COSTS[kind];
   if (currentLevel >= costs.length) return null;
   return costs[currentLevel];
-}
-
-// ── Job Advancements ──────────────────────────────────────────────────────────
-
-export interface Advancement {
-  id: string;
-  classId: string;
-  name: string;
-  path: 'A' | 'B';
-  cost: number;
-  description: string;
-  statBonus: { hp?: number; atk?: number; def?: number; fov?: number };
-}
-
-export const ADVANCEMENTS: Advancement[] = [
-  {
-    id: 'dragon-knight', classId: 'warrior', name: 'Dragon Knight', path: 'A', cost: 50,
-    description: '+15 HP, +2 DEF — kills leave lava beneath the fallen',
-    statBonus: { hp: 15, def: 2 },
-  },
-  {
-    id: 'hero', classId: 'warrior', name: 'Hero', path: 'B', cost: 50,
-    description: '+3 ATK — 20% chance each attack ignores monster defense',
-    statBonus: { atk: 3 },
-  },
-  {
-    id: 'archmage', classId: 'mage', name: 'Archmage', path: 'A', cost: 50,
-    description: '+3 ATK — scrolls and spells deal 50% more damage',
-    statBonus: { atk: 3 },
-  },
-  {
-    id: 'priest', classId: 'mage', name: 'Priest', path: 'B', cost: 50,
-    description: '+12 HP — 1-in-5 chance to fully heal on monster kill',
-    statBonus: { hp: 12 },
-  },
-  {
-    id: 'bowmaster', classId: 'ranger', name: 'Bowmaster', path: 'A', cost: 50,
-    description: 'Each attack also strikes the second-nearest visible enemy',
-    statBonus: {},
-  },
-  {
-    id: 'sniper', classId: 'ranger', name: 'Sniper', path: 'B', cost: 50,
-    description: '+5 FOV — 25% chance each hit deals double damage',
-    statBonus: { fov: 5 },
-  },
-  {
-    id: 'night-lord', classId: 'thief', name: 'Night Lord', path: 'A', cost: 50,
-    description: 'Throws a throwing star each turn (free action, 3 dmg to nearest foe)',
-    statBonus: {},
-  },
-  {
-    id: 'chief-bandit', classId: 'thief', name: 'Chief Bandit', path: 'B', cost: 50,
-    description: 'Kills yield +2 extra gold; +10% chance rooms spawn an extra item',
-    statBonus: {},
-  },
-];
-
-export function getAdvancements(classId: string): Advancement[] {
-  return ADVANCEMENTS.filter(a => a.classId === classId);
-}
-
-export function getAdvancement(id: string): Advancement | undefined {
-  return ADVANCEMENTS.find(a => a.id === id);
 }

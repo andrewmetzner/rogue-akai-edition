@@ -52,9 +52,9 @@ export function playerLevel(xp: number): number {
   return level - 1;
 }
 
-export function useItem(player: Entity, kind: ItemKind, state: GameState): string {
+export function useItem(player: Entity, kind: ItemKind, state: GameState, item?: Entity): string {
   const s = player.stats!;
-  const { entities, visible, mapWidth, advancement } = state;
+  const { entities, visible, mapWidth } = state;
 
   switch (kind) {
 
@@ -75,29 +75,24 @@ export function useItem(player: Entity, kind: ItemKind, state: GameState): strin
         .filter(e => e.type === EntityType.Monster && e.alive)
         .sort((a, b) => dist(player, a) - dist(player, b));
       if (targets.length === 0) return 'The scroll crackles but finds no target.';
-
-      const mult = advancement === 'archmage' ? 1.5 : 1;
-      const msgs: string[] = [];
-
-      // Bowmaster: hit 2 targets; everyone else: 1
-      const hitCount = advancement === 'bowmaster' ? Math.min(2, targets.length) : 1;
-      for (let i = 0; i < hitCount; i++) {
-        const target = targets[i];
-        const dmg = Math.round(rng(15, 25) * mult);
-        target.stats!.hp -= dmg;
-        if (target.stats!.hp <= 0) {
-          target.alive = false;
-          msgs.push(`Lightning strikes the ${target.name} for ${dmg} damage — it dies!`);
-        } else {
-          msgs.push(`Lightning strikes the ${target.name} for ${dmg} damage!`);
-        }
+      const target = targets[0];
+      const dmg = rng(15, 25);
+      target.stats!.hp -= dmg;
+      if (target.stats!.hp <= 0) {
+        target.alive = false;
+        return `Lightning strikes the ${target.name} for ${dmg} damage — it dies!`;
       }
-      return msgs.join(' ');
+      return `Lightning strikes the ${target.name} for ${dmg} damage!`;
     }
 
     case ItemKind.Sword: {
-      s.attack += 3;
-      return 'You equip the sword. (+3 attack)';
+      // Swap out old weapon, equip new procedural one
+      const oldAtk = state.equippedWeapon?.atk ?? 0;
+      const newAtk = item?.weaponAtk ?? 3;
+      const weaponName = item?.name ?? 'Sword';
+      s.attack = s.attack - oldAtk + newAtk;
+      state.equippedWeapon = { name: weaponName, atk: newAtk };
+      return `You equip the ${weaponName}. (+${newAtk} ATK)`;
     }
 
     case ItemKind.Shield: {
@@ -157,7 +152,7 @@ export function useItem(player: Entity, kind: ItemKind, state: GameState): strin
     }
 
     case ItemKind.CoinBag: {
-      if (state.mode === 'roguelite') {
+      if (state.mode === 'roguelike') {
         const gold = rng(20, 40);
         state.gold += gold;
         return `You grab the coin bag! (+${gold}g)`;
@@ -191,7 +186,7 @@ export function useItem(player: Entity, kind: ItemKind, state: GameState): strin
       return 'The lantern blazes! Your vision expands for 15 turns.';
     }
 
-    // ── Planned (not yet spawning) ────────────────────────────────────────
+    // ── Planned ───────────────────────────────────────────────────────────
 
     case ItemKind.Wand:
       return '(not yet implemented)';
