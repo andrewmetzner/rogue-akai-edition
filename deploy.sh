@@ -1,11 +1,9 @@
 #!/bin/bash
 set -e
 
-DEPLOY_DIR="/www/games/rogue"
-
 git pull
+git checkout index.html
 npm install
 npm run build
-mkdir -p "$DEPLOY_DIR"
-cp -r dist/* "$DEPLOY_DIR/"
-echo "Done. Deployed to $DEPLOY_DIR"
+cp -r dist/* ./
+echo "Done."
