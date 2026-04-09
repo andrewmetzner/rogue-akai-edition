@@ -6,5 +6,5 @@ git pull
 git checkout index.html
 npm install
 npm run build
-cp -r dist/* ~/www/games/rogue/
+cp -r dist/* ./
 echo "Done."
