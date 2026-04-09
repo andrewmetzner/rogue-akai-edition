@@ -2,50 +2,71 @@ ROGUE - AKAI EDITION
 ====================
 
 An ASCII dungeon crawler built with TypeScript + HTML5 Canvas.
-Inspired by the original Rogue (1980). Run in any modern browser.
+Inspired by the original Rogue (1980). Runs in any modern browser.
+Play at: https://unluckylisp.com/games/rogue/
 
 
 FEATURES
 --------
 
   Procedural Dungeons
-    - New map generated every run and every floor descent
-    - BSP-style room placement with L-shaped corridor connections
-    - Rooms vary in size and count, scaling with depth
+    - New map every run and every descent
+    - BSP room placement with L-shaped corridors
+    - 4 biomes across 28 floors, each with unique hazards and monsters
 
   Field of View
-    - Recursive shadowcasting FOV (radius 9)
-    - Tiles outside your sight are dark; previously explored tiles
-      remain visible in a dimmed "memory" state
-    - Monsters are only drawn when in your line of sight
+    - Recursive shadowcasting (radius 9)
+    - Explored tiles stay visible in dimmed "memory" state
+    - Monsters only visible within line of sight
 
   Turn-Based Combat
-    - Bump into a monster to attack
-    - Damage rolls: random(1..attack) - defense, minimum 1
-    - Monsters move and attack on every player turn
+    - Bump into monsters to attack
+    - Damage: random(1..attack) - defense, minimum 1
+    - Monsters move and attack each player turn
 
-  Monsters (5 types, scale with depth)
-    r  Rat      - weak, found on all floors
-    g  Goblin   - standard early enemy
-    o  Orc      - tougher, appears depth 2+
-    T  Troll    - dangerous, appears depth 3+
-    D  Dragon   - boss-tier, depth 5+
+  Two Game Modes
+    Classic   - permadeath, single run, auto-saves every 5 turns
+    Roguelike - gold persists across runs; spend in The Village lobby
+                on permanent meta upgrades (Vitality / Strength / Fortitude)
+                and cosmetic skins
 
-  Items (pick up with G)
-    !  Health Potion    - restores 10-20 HP
-    /  Lightning Scroll - zaps nearest monster for 15-25 damage
-    )  Sword            - permanent +3 attack
-    [  Shield           - permanent +2 defense
+  Biomes
+    The Dungeon      Floors  1-7    standard stone dungeon
+    Frozen Caverns   Floors  8-14   ice patches cause sliding
+    The Slime Pits   Floors 15-21   slime pools drain 1 HP/turn
+    The Inferno      Floors 22-28   lava floors drain 3 HP/turn
 
-  Progression
-    - 7 dungeon depths total
-    - XP gained from kills; level ups grant +5 max HP and +1 attack
-    - Reach the bottom of floor 7 and descend to win
+  Monsters (16 types, biome-appropriate)
+    Dungeon:  Rat, Goblin, Orc, Troll, Dragon
+    Ice:      Frost Wolf, Yeti, Ice Elemental, Ice Dragon (freezes player)
+    Slime:    Slime, Jelly, Slime Lord
+    Inferno:  Ember Spirit, Drake, Fire Demon, Fire Dragon (creates lava)
+
+  Items
+    !   Health Potion       heal 10-20 HP
+    ◆   Super Mushroom      heal 25-40 HP
+    ¢   Coin Bag            +gold or +XP depending on mode
+    [   Shield              +2 DEF permanent
+    )   Weapon              procedural; replaces equipped weapon
+    /   Lightning Scroll    zap nearest monster 15-25 dmg
+    ♠   Fire Flower         hits all visible monsters 8-14 each
+    ☻   Bomb                hits all adjacent monsters 10-18 each
+    :   Lantern             +5 FOV radius for 15 turns
+    *   Star                3 turns of invincibility
+    ?   Magic Map           reveals entire floor
+    *   Ice Bomb            freezes all visible monsters 2 turns
+
+  Skins (Roguelike)
+    Classic, Pea Soup, Amber, Copper, Blood Moon, Oceanic, Amethyst
+
+  Clan Primer
+    In-game codex that tracks monster encounters, kills, discovered
+    items, and hazards across all runs
 
   HUD
-    - HP bar with color (green / yellow / red)
-    - Attack, defense, level, XP, depth, turn counter displayed live
-    - Message log shows last 6 combat and event messages
+    HP bar (color-coded), ATK, DEF, level, XP, depth, turn counter
+    Equipped weapon name
+    Message log (last 6 events)
 
 
 CONTROLS
@@ -55,10 +76,11 @@ CONTROLS
   Diagonal      Y U B N  (top-left, top-right, bot-left, bot-right)
                 Numpad 7 9 1 3
   Vim keys      H J K L  (left down up right)
-  Wait a turn   .  or  Numpad 5
+  Wait          .  or  Numpad 5
   Pick up item  G
-  Descend       >  (must be standing on > stairs tile)
-  Restart       R  (after death or victory)
+  Descend       >  (standing on stairs tile)
+  Pause / menu  Escape
+  Clan Primer   C  (during play)
 
 
 HOW TO RUN
@@ -67,24 +89,30 @@ HOW TO RUN
   npm install
   npm run dev
 
-  Then open http://localhost:5173 in your browser.
+  Open http://localhost:5173 in your browser.
 
   Production build:
-  npm run build
+  npm run build   (output to dist/)
 
 
 PROJECT LAYOUT
 --------------
 
   src/
-    types.ts      - shared interfaces and value enums (Tile, EntityType, ItemKind)
-    dungeon.ts    - procedural map generation
-    fov.ts        - recursive shadowcasting
-    entities.ts   - player/monster/item factory functions and spawn logic
-    combat.ts     - attack rolls, item use, monster pathfinding AI
-    renderer.ts   - canvas ASCII renderer, HUD, start menu, game over screen
-    game.ts       - game loop, state management, input handling
-    main.ts       - entry point
+    types.ts        shared interfaces and value enums
+    dungeon.ts      BSP procedural map generation
+    fov.ts          recursive shadowcasting
+    entities.ts     player/monster/item factories and spawn logic
+    combat.ts       attack rolls, item use, monster AI
+    meta.ts         roguelike meta-progression and skin system
+    save.ts         classic-mode save/load
+    renderer.ts     canvas renderer, HUD, all screens
+    game.ts         game loop, state, input handling
+    themes.ts       color palette themes
+    audio.ts        sound effects
+    biomes.ts       biome definitions and palettes
+    discoveries.ts  cross-run discovery log
+    main.ts         entry point
 
 
 TECH STACK
