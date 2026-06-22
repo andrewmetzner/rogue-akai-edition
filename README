@@ -94,6 +94,8 @@ HOW TO RUN
   Production build:
   npm run build   (output to dist/)
 
+  (or use deploy.sh to include updates through git)
+
 
 PROJECT LAYOUT
 --------------
